@@ -1,0 +1,7 @@
+{
+  "_comment": "Copy to .claude/settings.local.json and tweak per teammate. Not committed (see .gitignore). Use this for personal additions like enabling git push or extra WebFetch domains. Project defaults live in .claude/settings.json.",
+  "permissions": {
+    "allow": [
+    ]
+  }
+}

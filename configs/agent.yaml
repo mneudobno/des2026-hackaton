@@ -1,0 +1,50 @@
+llm:
+  # Mac dev default: qwen2.5:7b (fits comfortably). On the ZGX upgrade to qwen2.5:14b-instruct or llama-3.3-70b via NIM.
+  provider: ollama          # ollama | nim | openai-compat
+  model: qwen2.5:7b
+  base_url: http://localhost:11434
+  temperature: 0.3
+  max_tokens: 512
+
+vlm:
+  # Note: Ollama tag is `qwen2.5vl:7b` (no dash). Day-of NIM may use `qwen2.5-vl:7b`.
+  provider: ollama
+  model: qwen2.5vl:7b
+  base_url: http://localhost:11434
+  frame_fps: 2
+  downscale_to: 768
+
+stt:
+  provider: faster-whisper
+  model: large-v3-turbo
+  language: en
+  vad: silero
+
+tts:
+  provider: piper
+  voice: en_US-amy-medium
+  barge_in: true
+
+agent:
+  tick_hz: 5
+  max_tool_calls_per_turn: 4
+  system_prompt: |
+    You are a physical-robot agent. You receive observations from cameras,
+    microphones, and robot state, and choose tools to act. Act decisively.
+    Prefer one committed action over deliberation. Speak briefly when useful.
+
+  observation_prompt: |
+    List only what is clearly visible. If uncertain, say "uncertain".
+    Fields: objects (with rough positions), scene summary (<=15 words),
+    one salient event if any, else null.
+
+robot:
+  adapter: mock
+  command_rate_hz: 10
+  safety:
+    max_linear_speed: 0.3   # m/s
+    max_angular_speed: 1.0  # rad/s
+
+logging:
+  jsonl_dir: runs/
+  video: true

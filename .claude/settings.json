@@ -1,0 +1,149 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv:*)",
+      "Bash(uv run:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv pip:*)",
+      "Bash(uv add:*)",
+      "Bash(uv lock:*)",
+      "Bash(hack:*)",
+      "Bash(.venv/bin/hack:*)",
+      "Bash(pytest:*)",
+      "Bash(ruff:*)",
+      "Bash(pyright:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(bash scripts/*)",
+      "Bash(./scripts/*)",
+      "Bash(chmod:*)",
+      "Bash(mkdir:*)",
+      "Bash(touch:*)",
+      "Bash(ls:*)",
+      "Bash(pwd)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(tree:*)",
+      "Bash(file:*)",
+      "Bash(stat:*)",
+      "Bash(env)",
+      "Bash(printenv:*)",
+      "Bash(which:*)",
+      "Bash(echo:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git switch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git stash:*)",
+      "Bash(git restore:*)",
+      "Bash(git tag:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git merge --no-commit:*)",
+      "Bash(curl -s:*)",
+      "Bash(curl -sS:*)",
+      "Bash(curl -fsSL:*)",
+      "Bash(httpx:*)",
+      "Bash(ollama list)",
+      "Bash(ollama show:*)",
+      "Bash(ollama ps)",
+      "Bash(nvidia-smi:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker images:*)",
+      "Bash(pgrep:*)",
+      "Bash(lsof -i:*)",
+      "Bash(nc -z:*)",
+      "Bash(ping -c:*)",
+      "Bash(jq:*)",
+      "Edit(src/**)",
+      "Edit(tests/**)",
+      "Edit(docs/**)",
+      "Edit(configs/**)",
+      "Edit(scripts/**)",
+      "Edit(.claude/skills/**)",
+      "Edit(README.md)",
+      "Edit(CLAUDE.md)",
+      "Edit(pyproject.toml)",
+      "Edit(.gitignore)",
+      "Edit(runs/**)",
+      "Write(src/**)",
+      "Write(tests/**)",
+      "Write(docs/**)",
+      "Write(configs/**)",
+      "Write(scripts/**)",
+      "Write(.claude/skills/**)",
+      "Write(runs/**)",
+      "Read(**)",
+      "Glob(**)",
+      "Grep(**)",
+      "WebFetch(domain:docs.python.org)",
+      "WebFetch(domain:docs.astral.sh)",
+      "WebFetch(domain:fastapi.tiangolo.com)",
+      "WebFetch(domain:typer.tiangolo.com)",
+      "WebFetch(domain:docs.pydantic.dev)",
+      "WebFetch(domain:ollama.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.nvidia.com)",
+      "WebFetch(domain:huggingface.co)"
+    ],
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -fd:*)",
+      "Bash(rm -rf /:*)",
+      "Bash(rm -rf ~:*)",
+      "Bash(sudo:*)",
+      "Bash(curl * | sh)",
+      "Bash(curl * | bash)",
+      "Bash(ollama rm:*)",
+      "Bash(docker rm:*)",
+      "Bash(docker rmi:*)",
+      "Bash(pkill -9:*)",
+      "Edit(.env)",
+      "Edit(.env.*)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(**/secrets/**)",
+      "Read(**/.aws/**)",
+      "Read(**/.ssh/**)"
+    ]
+  },
+  "env": {
+    "UV_NO_SYNC_ON_RUN": "0",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "HACK_RUNS_DIR": "runs"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -d .venv || uv sync >/dev/null 2>&1; echo 'hack: env ready · run `uv run hack doctor` to verify'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run ruff check --fix --quiet $(git diff --name-only --diff-filter=ACMR -- '*.py' 2>/dev/null) 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
