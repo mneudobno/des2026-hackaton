@@ -7,6 +7,8 @@ description: Implement a new RobotAdapter from a given SDK. Use when wiring up a
 
 The runtime only calls six methods — map the robot's SDK onto those and stop.
 
+**Before writing code:** check `docs/DAY_OF_DECISIONS.md` §1 — it already maps the intake's "transport" answer to a specific adapter (ROS2 / HTTP / LeRobot / custom). Don't re-derive the choice. Every `# DAYOF: R` marker in the chosen file is a spot you're expected to edit.
+
 ## Steps
 
 1. **Read the SDK's hello-world sample first.** Note: connection handshake, teardown, coordinate frames, units (m vs cm, rad vs deg), and blocking vs async.

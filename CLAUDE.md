@@ -2,9 +2,9 @@
 
 ## Event
 
+- **Team:** **Just Build** — Timur (repo owner), Kamila, Simon.
 - **When/where:** 2026-05-08, Kistamässan, Stockholm (DIS2026X1).
 - **Constraint:** 2-hour build window after a 30-min challenge reveal.
-- **Team:** 3 people.
 - **Goal:** AI agent that controls a physical robot using vision + audio.
 - **Evaluation:** hardware utilization, sensor/input integration, agent quality.
 - **Prize:** HP ZGX Nano AI Station.
@@ -23,12 +23,16 @@
 
 ## Architectural commitments (do not violate)
 
-- **Pluggable `RobotAdapter`** (`src/hack/robot/base.py`) is the only integration surface. Day-of work = implement one adapter, not rewrite the runtime.
+- **Pluggable `RobotAdapter`** (`src/hack/robot/base.py`) is the only robot integration surface. Day-of work = implement one adapter, not rewrite the runtime.
+- **Pluggable model adapters** (`src/hack/models/`) — `LLMAdapter` + `VLMAdapter` ABCs with `ollama` / `gemini` / `openai-compat` / `nim` concrete. Runtime consumes them via `make_llm(cfg['llm'])` / `make_vlm(cfg['vlm'])`. Swap providers by editing YAML — never by touching runtime code.
+- **Plan memory** (`src/hack/agent/plan_memory.py`) — shared between `hack.agent.runtime` (judged demo) and `hack.rehearsal.runner` (playground). A voice cue triggers decomposition into typed `PlanStep(text, tool?)` objects. Pre-baked steps (tool present) execute directly, bypassing VLM+planner. Unrecognised cues alert + idle — **no fallback behaviour anywhere**.
+- **Safety layer** — `plan_memory.clamp_call()` caps every `move` to `robot.safety`; `expand_plan_steps()` auto-splits oversized pre-baked moves; `required_tools_for_step()` enforces semantic coverage (`speak` != `move`).
+- **Regression gate** — `uv run hack regression` runs the curated cue suite in `docs/TEST_CUES.md` against any config. Must pass before committing prompt/runner changes.
 - **Python 3.11+, uv-managed.** Never call `pip` directly; use `uv pip`, `uv run`, `uv sync`.
 - **Pydantic for every structured I/O** (observations, actions, config).
-- **Local inference only** — no cloud fallbacks in the judged run. Ollama for fallback, NVIDIA NIM for primary serving.
-- **Single CLI entry point `hack`** (Typer). New functionality extends the CLI, not random scripts.
-- **JSONL logging everywhere** — every observation, plan, action. Demo replays from these logs.
+- **Local inference only on the judged run.** Ollama / NIM. Gemini is allowed for rehearsal only.
+- **Single CLI entry point `hack`** (Typer).
+- **JSONL logging everywhere** — every observation, plan, action, alert. Demo replays from these logs.
 
 ## Day-of rules
 
@@ -38,8 +42,34 @@
 4. **Cut-list at T-30 min:** kill audio if flaky, fall back to MockRobot + scripted demo if adapter broken, disable dashboard if unstable.
 5. Commit often. Branch per risky change.
 
+## Prep tracking
+
+`docs/PREP_TODO.md` is the single source of truth for "what's done, what's next." **Keep it updated**: when you complete a substantive item, tick it there in the same change. When you discover new work, add it.
+
+## Rehearsal loop (pre-event)
+
+`uv run hack rehearse --scenario <name>` runs the full agent against a virtual-world mock robot (synthetic frame rendering, scripted voice cues, success criterion). Writes `runs/rehearsal-<scenario>-<ts>.json` and prints regression diff vs previous run of the same scenario. Scenarios live in `src/hack/rehearsal/scenarios.py` — add new ones when the challenge shape suggests it.
+
+After every code/config/prompt change: rehearse. After every rehearsal: append one row to `docs/REHEARSALS.md` with the insight and the action taken.
+
+## Day-of workflow
+
+At event start, in order:
+
+1. `uv run hack recon user@<zgx-a>` and `uv run hack recon user@<zgx-b>` (also `--local` on each laptop). Produces `runs/recon-latest.json` — the **machine-authoritative** facts (GPU, NIM containers, Ollama state, disk, ports). This output overrides anything hand-written in intake §6.
+2. Fill `docs/DAY_OF_INTAKE.md` live during the 30-min challenge intro (all three teammates). Skip §6; recon covers it.
+3. Walk `docs/DAY_OF_DECISIONS.md` top-to-bottom. Each row maps an intake-or-recon answer to an explicit repo change.
+4. Run `uv run hack intake` — prints recon summary (authoritative) + unfilled blanks + `# DAYOF:` code punch-list + cut-list triggers.
+5. Open `docs/DAY_OF_TASKS.md` (role × 15-min slice) and start ticking.
+
+**Rule:** `rg "# DAYOF:" -n` is the exhaustive code punch-list. Every touch-point expected to change on the day is tagged. Do not edit the runtime in ways these markers don't cover — that's scope creep under time pressure.
+
 ## Key files
 
+- `docs/PREP_TODO.md` — prep tracker (update as items complete).
+- `docs/DAY_OF_INTAKE.md` — blank-form intake (fill during intro).
+- `docs/DAY_OF_DECISIONS.md` — intake → repo choice matrix.
+- `docs/DAY_OF_TASKS.md` — live task board for the 2-hour build.
 - `src/hack/cli.py` — CLI surface (Typer).
 - `src/hack/robot/base.py` — adapter contract.
 - `src/hack/agent/runtime.py` — event loop (leave alone day-of).

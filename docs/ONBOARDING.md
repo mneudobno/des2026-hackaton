@@ -109,7 +109,11 @@ The four project skills under `.claude/skills/` (`robot-adapter`, `agent-prompt`
 
 - `CLAUDE.md` — architectural commitments and day-of rules. Read before changing anything in `src/hack/agent/runtime.py`.
 - `docs/day_of_playbook.md` — minute-by-minute schedule and roles for May 8.
-- `docs/zgx_notes.md` — DGX OS / NIM / Ollama cheatsheet for the event hardware.
+- `docs/zgx_overview.md` — what the ZGX Nano is and how we use it (read first).
+- `docs/zgx_notes.md` — DGX OS / NIM / Ollama ops cheatsheet for the event hardware.
+- `docs/prior_art.md` — similar setups, repos to study, lessons we're borrowing.
+- `docs/DAY_OF_INTAKE.md` / `docs/DAY_OF_DECISIONS.md` / `docs/DAY_OF_TASKS.md` — event-day tactical docs.
+- `scripts/zgx_recon.sh` + `hack recon <host>` — machine-side setup snapshot (pure bash, no deps on the target).
 - `.claude/skills/*/SKILL.md` — pre-canned procedures Claude (and you) should follow for the four common day-of tasks.
 
 ## 7. Daily workflow

@@ -25,6 +25,389 @@ app.add_typer(demo, name="demo")
 console = Console()
 
 
+# ---------- rehearse (pre-event + day-of) ----------
+@app.command()
+def rehearse(
+    scenario: str = typer.Option("pick-and-place", help="pick-and-place | follow | chit-chat | dance"),
+    config: Path = typer.Option(Path("configs/agent.yaml"), "--config"),
+    ticks: int = typer.Option(0, help="Override scenario max_ticks (0 = use scenario default)."),
+    save_frames: bool = typer.Option(False, help="Save every rendered frame to runs/rehearsal-frames-<ts>/."),
+    display: bool = typer.Option(False, "--display/--no-display", help="Open an OpenCV window showing the robot live."),
+    delay: float = typer.Option(0.0, help="Seconds to wait between ticks. Useful with --display (e.g. 0.4)."),
+    adapter: str = typer.Option("virtual", help="virtual (Mac playground) | mock | http | ros2 | lerobot — use a real robot."),
+) -> None:
+    """Run a scripted rehearsal against a virtual-world mock robot and write metrics.
+
+    Use this repeatedly on Mac+Ollama to shake out regressions before the event.
+    Each run writes runs/rehearsal-<scenario>-<ts>.json and a JSONL trace that
+    `hack ui` tails live. Add --display for a local OpenCV window animation;
+    press `q` in the window to abort early.
+    """
+    import asyncio as _aio
+    import time as _time
+
+    from hack.rehearsal.runner import compare_to_previous, rehearse as do_rehearse, write_summary
+
+    frames_dir = None
+    if save_frames:
+        frames_dir = Path(f"runs/rehearsal-frames-{int(_time.time())}")
+
+    console.print(f"[cyan]rehearsing[/] scenario={scenario}  display={display}  delay={delay}s")
+    if not display:
+        console.print("  dashboard: [cyan]uv run hack ui[/] (in another shell) → http://127.0.0.1:8000")
+    t0 = _time.time()
+    m = _aio.run(do_rehearse(
+        scenario_name=scenario,
+        config_path=config,
+        max_ticks=(ticks or None),
+        image_save_dir=frames_dir,
+        display=display,
+        delay=delay,
+        adapter=adapter,
+    ))
+    total = _time.time() - t0
+    path = write_summary(m, Path("runs"), config_snapshot=config)
+    console.print(f"[green]wrote[/] {path}")
+
+    t = Table(title=f"rehearsal: {scenario}", show_lines=False)
+    t.add_column("metric", style="cyan")
+    t.add_column("value")
+    s = m.summary()
+    t.add_row("success", f"{'✅' if s['success'] else '❌'}  {s['success_reason']}")
+    t.add_row("ticks_run", str(s["ticks_run"]))
+    vm, pm = s["vlm_ms"], s["planner_ms"]
+    if vm.get("n"):
+        t.add_row("vlm_ms", f"n={vm['n']}  mean={vm['mean']:.0f}  p50={vm['p50']:.0f}  p95={vm['p95']:.0f}  max={vm['max']:.0f}")
+    if pm.get("n"):
+        t.add_row("planner_ms", f"n={pm['n']}  mean={pm['mean']:.0f}  p50={pm['p50']:.0f}  p95={pm['p95']:.0f}  max={pm['max']:.0f}")
+    t.add_row("tool_calls", ", ".join(f"{k}:{v}" for k, v in s["tool_calls"].items()) or "—")
+    t.add_row("parse_failures", f"vlm={s['vlm_parse_failures']}  plan={s['plan_parse_failures']}")
+    t.add_row("total_wall_s", f"{total:.1f}")
+    console.print(t)
+
+    console.rule("vs previous rehearsal")
+    for line in compare_to_previous(scenario, m, Path("runs")):
+        console.print(f"  {line}")
+
+    console.rule("next")
+    console.print("Append one line to [cyan]docs/REHEARSALS.md[/] — date, scenario, key metric, insight, action.")
+
+
+# ---------- regression (cue test suite) ----------
+@app.command()
+def regression(
+    config: Path = typer.Option(Path("configs/agent.yaml"), "--config"),
+    name: str = typer.Option("", "--name", help="Comma-separated subset of case names (default: all)."),
+    save: bool = typer.Option(True, "--save/--no-save", help="Append row to docs/REHEARSALS.md."),
+    json_out: Path = typer.Option(Path("runs/regression-latest.json"), "--json"),
+) -> None:
+    """Run the maintained mic-cue regression suite against a config.
+
+    Curated test cases live in `src/hack/rehearsal/regression.py::CASES`.
+    Each case decomposes the cue via the planner LLM and checks the resulting
+    plan against scenario-specific criteria (step count, tool mix, total rotation…).
+    """
+    import asyncio as _aio
+    import json as _json
+
+    from hack.rehearsal.regression import (
+        append_to_log, format_report, run_all, summary_json,
+    )
+
+    names = [n.strip() for n in name.split(",") if n.strip()] if name else None
+    results = _aio.run(run_all(config, names))
+    console.print(format_report(config, results))
+    json_out.parent.mkdir(parents=True, exist_ok=True)
+    json_out.write_text(_json.dumps(summary_json(results), indent=2))
+    console.print(f"[dim]json summary -> {json_out}[/]")
+    if save:
+        append_to_log(config, results)
+    failed = [r for r in results if not r.ok]
+    if failed:
+        raise typer.Exit(1)
+
+
+# ---------- observe (rehearsal analysis) ----------
+@app.command()
+def observe(
+    scenario: str = typer.Option("dance", help="pick-and-place | follow | chit-chat | dance"),
+    ticks: int = typer.Option(0, help="Override scenario max_ticks (0 = scenario default)."),
+    config: Path = typer.Option(Path("configs/agent.yaml"), "--config"),
+    delay: float = typer.Option(0.5, help="Seconds between ticks — helps mic/dashboard keep up."),
+    display: bool = typer.Option(False, "--display/--no-display"),
+) -> None:
+    """Run a rehearsal with live log-watching and write an observation markdown report.
+
+    After the rehearsal completes, reads `runs/ui-latest.json` (if present) for
+    dashboard state and produces `runs/observation-<scenario>-<ts>.md` with
+    run metrics, behaviour flags, and any UI findings.
+    """
+    import asyncio as _aio
+
+    from hack.observation.analyzer import analyze
+    from hack.observation.log_watcher import watch as watch_trace
+    from hack.observation.report import write_report
+    from hack.observation.ui_watcher import load_latest
+    from hack.rehearsal.runner import rehearse as do_rehearse, write_summary
+
+    runs_dir = Path("runs")
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    # Predict the trace path so the watcher can tail it.
+    # The runner names files by time.time() when called; we must pass a pre-chosen trace path.
+    # To keep the runner unchanged we read the newest rehearsal-<scenario>-*.jsonl after a short wait.
+
+    async def _main() -> None:
+        reh_task = _aio.create_task(do_rehearse(
+            scenario_name=scenario,
+            config_path=config,
+            max_ticks=(ticks or None),
+            display=display,
+            delay=delay,
+        ))
+        # Give the runner a moment to create the trace file
+        await _aio.sleep(0.4)
+        traces = sorted(runs_dir.glob(f"rehearsal-{scenario}-*.jsonl"))
+        if not traces:
+            await _aio.sleep(0.8)
+            traces = sorted(runs_dir.glob(f"rehearsal-{scenario}-*.jsonl"))
+        trace_path = traces[-1] if traces else None
+        if trace_path is not None:
+            watcher = _aio.create_task(watch_trace(trace_path, console))
+        else:
+            watcher = None
+        metrics = await reh_task
+        if watcher:
+            await watcher
+        summary_path = write_summary(metrics, runs_dir, config_snapshot=config)
+        if trace_path is None:
+            console.print("[red]no trace path detected; skipping report[/]")
+            return
+        analyzer_result = analyze(trace_path)
+        ui_snapshot = load_latest()
+        report_path = write_report(scenario, analyzer_result, summary_path, ui_snapshot)
+        console.print(f"[green]observation report[/] -> {report_path}")
+
+    _aio.run(_main())
+
+
+# ---------- recon (day-of) ----------
+@app.command()
+def recon(
+    host: str = typer.Argument("local", help="'local' or user@host to SSH into."),
+    out_dir: Path = typer.Option(Path("runs"), "--out-dir"),
+    ssh_opts: str = typer.Option("", "--ssh-opts", help="Extra flags passed to ssh, e.g. '-p 2222 -i ~/.ssh/zgx_key'."),
+) -> None:
+    """Collect an objective setup snapshot from a machine (local or over SSH).
+
+    Saves text + JSON into `runs/recon-<host>-<ts>.{txt,json}` and refreshes
+    `runs/recon-latest.json` (a copy of the most recent JSON) as the
+    machine-authoritative source for `hack intake` to consume.
+    """
+    import json as _json
+    import time as _time
+
+    script = Path("scripts/zgx_recon.sh").resolve()
+    if not script.exists():
+        console.print(f"[red]missing {script}[/]")
+        raise typer.Exit(1)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    safe_host = host.replace("@", "_at_").replace(":", "_").replace("/", "_")
+    ts = int(_time.time())
+    txt_path = out_dir / f"recon-{safe_host}-{ts}.txt"
+    json_path = out_dir / f"recon-{safe_host}-{ts}.json"
+
+    if host == "local":
+        console.print(f"[cyan]running locally[/] → {txt_path}")
+        cmd = ["bash", str(script), "--json", str(json_path)]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        txt_path.write_text(proc.stdout + ("\n---stderr---\n" + proc.stderr if proc.stderr else ""))
+    else:
+        console.print(f"[cyan]uploading recon to {host}[/]")
+        scp_cmd = ["scp", *ssh_opts.split(), str(script), f"{host}:/tmp/zgx_recon.sh"]
+        r = subprocess.run(scp_cmd, capture_output=True, text=True)
+        if r.returncode != 0:
+            console.print(f"[red]scp failed[/]\n{r.stderr}")
+            raise typer.Exit(1)
+        console.print(f"[cyan]running on {host}[/]")
+        ssh_cmd = [
+            "ssh",
+            *ssh_opts.split(),
+            host,
+            "bash /tmp/zgx_recon.sh --json /tmp/zgx_recon.json && cat /tmp/zgx_recon.json",
+        ]
+        # Run, splitting stdout: text output first, then `=== JSON written ===`, then the cat of JSON.
+        proc = subprocess.run(ssh_cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            console.print(f"[red]ssh failed[/]\n{proc.stderr}")
+            raise typer.Exit(1)
+        out = proc.stdout
+        marker = "=== JSON written to /tmp/zgx_recon.json ==="
+        if marker in out:
+            text_part, _, json_part = out.partition(marker)
+            txt_path.write_text(text_part + marker + "\n")
+            json_path.write_text(json_part.strip() + "\n")
+        else:
+            txt_path.write_text(out)
+            # try to parse trailing JSON block
+            try:
+                start = out.rindex("{")
+                json_path.write_text(out[start:].strip() + "\n")
+            except ValueError:
+                console.print("[yellow]no JSON detected in remote output[/]")
+
+    # Validate JSON and refresh the "latest" pointer.
+    if json_path.exists():
+        try:
+            data = _json.loads(json_path.read_text())
+            (out_dir / "recon-latest.json").write_text(json_path.read_text())
+            _summarize_recon(data, host)
+        except _json.JSONDecodeError as e:
+            console.print(f"[red]invalid JSON at {json_path}: {e}[/]")
+    else:
+        console.print(f"[red]no JSON produced for {host}[/]")
+
+    console.print(f"[green]saved[/] {txt_path} · {json_path}")
+
+
+def _summarize_recon(data: dict, host: str) -> None:
+    """Print a decision-ready summary highlighting what changes day-of choices."""
+    t = Table(title=f"recon summary — {host}", show_lines=False)
+    t.add_column("check", style="cyan")
+    t.add_column("value")
+    t.add_column("impact", style="dim")
+
+    gpu = data.get("gpu", {})
+    gpu_s = f"{gpu.get('name','?')} · {gpu.get('memory_total','?')} · driver {gpu.get('driver','?')}" if gpu.get("present") else "NO GPU"
+    t.add_row("GPU", gpu_s, "determines local vs remote inference")
+
+    docker = data.get("docker", {})
+    nim = (docker.get("nim_containers") or "").strip()
+    t.add_row("NIM containers", nim or "none detected", "if any, prefer NIM profile (Decisions §2)")
+    t.add_row("Docker running", str(docker.get("running", False)), "")
+
+    ollama = data.get("ollama", {})
+    t.add_row("Ollama", "running" if ollama.get("running") else "not running", "bootstrap_zgx.sh starts it")
+    t.add_row("Ollama models", ollama.get("models") or "none", "pull required models before agent run")
+
+    t.add_row("NeMo Agent Toolkit", "present" if data.get("nat_present") else "absent", "crib prompts if present")
+    t.add_row("Disk free /", data.get("disk_free_root", "?"), "need ~50 GB for models")
+    t.add_row("Memory", data.get("memory", {}).get("total", "?"), "")
+    t.add_row("Ports busy", data.get("ports_in_use") or "none", "avoid collisions for hack ui/serve")
+    t.add_row("uv", "present" if data.get("uv_present") else "absent", "install uv if absent")
+    console.print(t)
+
+
+# ---------- intake (day-of) ----------
+@app.command()
+def intake(
+    snapshot: bool = typer.Option(True, help="Snapshot DAY_OF_INTAKE.md into runs/ so the answers are versioned."),
+    template: Path = typer.Option(Path("docs/DAY_OF_INTAKE.md"), help="Path to the intake template/doc."),
+) -> None:
+    """Print the day-of punch-list: machine recon (authoritative) + unfilled intake blanks
+    + DAYOF code markers + cut-list triggers.
+
+    Run this right after the 30-minute challenge intro is over. If `hack recon`
+    produced `runs/recon-latest.json`, its values override intake §6 (machine wins).
+    """
+    import json as _json
+    import re
+    import time
+
+    # 0. Recon data (authoritative for §6-ish facts)
+    recon_path = Path("runs/recon-latest.json")
+    recon: dict | None = None
+    if recon_path.exists():
+        try:
+            recon = _json.loads(recon_path.read_text())
+        except _json.JSONDecodeError:
+            recon = None
+
+    console.rule("[bold]Machine recon (authoritative over intake §6)[/]")
+    if recon is None:
+        console.print("[yellow]no runs/recon-latest.json — run `hack recon <host>` first.[/]")
+    else:
+        _summarize_recon(recon, recon.get("hostname", "?"))
+
+    # 1. snapshot the human-filled intake
+    if snapshot and template.exists():
+        out = Path("runs") / f"intake-{int(time.time())}.md"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(template.read_text())
+        console.print(f"[green]snapshot[/] {template} -> {out}")
+
+    # 2. unfilled blanks in the intake. We skip lines under §6 if recon covers them
+    # (recon is the machine-authoritative source; don't nag humans for those).
+    console.rule("[bold]Unfilled intake blanks (skipping §6 when recon present)[/]")
+    if not template.exists():
+        console.print(f"[red]{template} missing[/]")
+    else:
+        blank_re = re.compile(r"(:\s*\.\.\.\s*$)|(^\s*[-*]?\s*\.\.\.\s*$)|(_{3,})|(\bTBD\b)")
+        lines = template.read_text().splitlines()
+        # Find §6 block so we can skip it if recon is available.
+        skip_ranges: list[tuple[int, int]] = []
+        if recon is not None:
+            in_six = False
+            start = 0
+            for idx, line in enumerate(lines, start=1):
+                if line.lstrip().startswith("## 6."):
+                    in_six = True
+                    start = idx
+                elif in_six and line.lstrip().startswith("## "):
+                    skip_ranges.append((start, idx - 1))
+                    in_six = False
+            if in_six:
+                skip_ranges.append((start, len(lines)))
+        def in_skip(n: int) -> bool:
+            return any(a <= n <= b for a, b in skip_ranges)
+
+        unfilled = [(i, ln.strip()[:80]) for i, ln in enumerate(lines, start=1)
+                    if blank_re.search(ln) and not in_skip(i)]
+        if not unfilled:
+            console.print("[green]all blanks filled[/]")
+        else:
+            for n, text in unfilled[:40]:
+                console.print(f"  [yellow]{n:>4}[/] {text}")
+            if len(unfilled) > 40:
+                console.print(f"  [dim]...and {len(unfilled) - 40} more[/]")
+
+    # 3. DAYOF markers grouped by file (skip self — the scanner lines in this CLI).
+    console.rule("[bold]# DAYOF: code punch-list[/]")
+    hits: dict[str, list[tuple[int, str]]] = {}
+    self_path = Path(__file__).resolve()
+    for path in sorted(Path("src").rglob("*.py")):
+        if path.resolve() == self_path:
+            continue
+        for i, line in enumerate(path.read_text().splitlines(), start=1):
+            stripped = line.lstrip()
+            if stripped.startswith("# DAYOF:"):
+                hits.setdefault(str(path), []).append((i, line.strip()))
+    for cfg_path in (Path("configs/agent.yaml"),):
+        if cfg_path.exists():
+            for i, line in enumerate(cfg_path.read_text().splitlines(), start=1):
+                stripped = line.lstrip()
+                if stripped.startswith("# DAYOF:"):
+                    hits.setdefault(str(cfg_path), []).append((i, line.strip()))
+    if not hits:
+        console.print("[green]no DAYOF markers left (either done or never placed)[/]")
+    else:
+        for path, rows in hits.items():
+            console.print(f"[cyan]{path}[/]")
+            for n, text in rows:
+                console.print(f"  {n:>4}  {text[:120]}")
+
+    # 4. cut-list reminders
+    console.rule("[bold]Cut-list triggers (from day_of_playbook.md)[/]")
+    console.print("  T+1:00 adapter red     → MockRobot + scripted demo")
+    console.print("  T+1:00 STT flaky       → dashboard text input")
+    console.print("  T+1:15 latency > 3.5s  → smaller model (Decisions §7)")
+    console.print("  T+1:30 new crash       → git reset to last green commit")
+    console.print("  T+1:45 live unreliable → ship recorded take")
+
+    console.rule("[bold]Next[/]")
+    console.print("Walk [cyan]docs/DAY_OF_DECISIONS.md[/] top to bottom, then open [cyan]docs/DAY_OF_TASKS.md[/] and tick.")
+
+
 # ---------- doctor ----------
 @app.command()
 def doctor() -> None:
@@ -306,10 +689,13 @@ def sensors_mic(transcribe: bool = False, seconds: float = 5.0) -> None:
 
 # ---------- ui ----------
 @app.command("ui")
-def ui(host: str = "127.0.0.1", port: int = 8000) -> None:
-    """Run the FastAPI dashboard."""
+def ui(host: str = "127.0.0.1", port: int = 8000, rehearsal: bool = typer.Option(False, "--rehearsal", help="Serve the rehearsal dashboard (adds mic + cue input). Never use on event day.")) -> None:
+    """Run the dashboard — the day-of one by default, the rehearsal one with --rehearsal."""
     import uvicorn
-    uvicorn.run("hack.ui.app:app", host=host, port=port, reload=False)
+    target = "hack.rehearsal.dashboard:app" if rehearsal else "hack.ui.app:app"
+    if rehearsal:
+        console.print("[yellow]rehearsal[/] dashboard — mic + cue enabled. Do NOT use on event day.")
+    uvicorn.run(target, host=host, port=port, reload=False)
 
 
 # ---------- demo ----------

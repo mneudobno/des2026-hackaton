@@ -2,6 +2,8 @@
 
 Hardware: NVIDIA GB10 Grace Blackwell, 128 GB unified RAM, 1000 TOPS FP4, DGX OS, 200 Gbps networking. Two boxes per team, paired to your laptop.
 
+> For the conceptual overview (what it is, why we designed the repo this way, sources), see [`zgx_overview.md`](./zgx_overview.md). This doc is the operational cheatsheet.
+
 ## First-touch checklist (event day)
 
 1. SSH into box A (primary) and box B (secondary). Note the IPs on a sticky note.
@@ -13,12 +15,24 @@ Hardware: NVIDIA GB10 Grace Blackwell, 128 GB unified RAM, 1000 TOPS FP4, DGX OS
 
 ## Default model set
 
+Two tiers. Try Nemotron via NIM first (it's what NVIDIA ships on DGX OS); fall back to Qwen via Ollama if a container wedges.
+
+**Tier A — NVIDIA-native (primary on ZGX):**
+
 | Slot | Model | Size | Notes |
 |------|-------|------|-------|
-| LLM (primary) | `qwen2.5:14b-instruct` | ~9 GB | fast, good tool-use |
-| LLM (large) | `meta/llama-3.3-70b-instruct` (NIM) | ~40 GB | only if NIM container present |
-| VLM | `qwen2.5vl:7b` (Ollama tag — no dash) / `qwen2.5-vl:7b` (NIM) | ~5 GB | grounded enough for scene parsing |
-| VLM (alt) | `llama-3.2-vision:11b` | ~7 GB | better captions, slower |
+| Router | `microsoft/phi-3-mini-128k-instruct` (NIM) | ~3.8 B | triage — saves planner invocations |
+| LLM (planner) | `nvidia/Nemotron-3-Nano-30B-A3B` (NIM) | ~65 GB | NVIDIA-tuned reasoning, ReAct-friendly |
+| VLM | `nvidia/Nemotron-Nano-12B-v2-VL` (NIM) | ~28 GB | matches Reachy playbook |
+| STT | `nvidia/riva-parakeet-ctc-1.1B` (Riva) | ~1 GB | gRPC, preinstalled on DGX OS |
+| TTS | `hexgrad/Kokoro-82M` | ~400 MB | fast, fluent; what NVIDIA's photo-booth uses |
+
+**Tier B — Ollama fallback (also works on Mac):**
+
+| Slot | Model | Size | Notes |
+|------|-------|------|-------|
+| LLM | `qwen2.5:14b-instruct` | ~9 GB | ZGX; `qwen2.5:7b` on Mac dev |
+| VLM | `qwen2.5vl:7b` (Ollama) / `qwen2.5-vl:7b` (NIM) | ~5 GB | grounded enough for scene parsing |
 | STT | `faster-whisper large-v3-turbo` | ~1.5 GB | streaming, multilingual |
 | TTS | `piper en_US-amy-medium` | ~60 MB | CPU-only is fine |
 
@@ -55,7 +69,27 @@ Fill in once we see what's actually preinstalled at the event:
 docker ps --format 'table {{.Names}}\t{{.Ports}}\t{{.Image}}'
 ```
 
-Then update `configs/agent.yaml` `llm.provider: nim`, `base_url: http://<zgx-ip>:<port>/v1` and use OpenAI-compatible client.
+Then update `configs/agent.yaml` `llm.provider: openai-compat`, `base_url: http://<zgx-ip>:<port>/v1`.
+
+Expected NIM containers on DGX OS (based on NVIDIA's published playbooks):
+- Nemotron-3-Nano-30B-A3B (reasoning LLM)
+- Nemotron-Nano-12B-v2-VL (VLM)
+- Phi-3-Mini-128K (router)
+- Riva Parakeet ASR (STT)
+- Kokoro TTS
+- FLUX.1-Kontext-dev (image gen — optional, only if the challenge involves visuals)
+
+## NeMo Agent Toolkit (NAT)
+
+If `nat` is on `$PATH` on DGX OS, it's NVIDIA's official agent framework with built-in ReAct, router, and tool-use primitives. Reference config lives at `nat/src/ces_tutorial/config.yml` in the Reachy playbook.
+
+We do **not** rely on NAT — our `hack.agent.runtime` is the source of truth. But if the event environment has NAT preinstalled and a compatible router config for Nemotron, we can crib prompts from it.
+
+Quick check on day-of:
+```bash
+which nat && nat --help
+ls /opt/nvidia/nemo-agent-toolkit 2>/dev/null || true
+```
 
 ## Latency budget (target)
 

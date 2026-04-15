@@ -13,6 +13,14 @@ ADAPTERS: dict[str, Callable[..., RobotAdapter]] = {
     "ros2": ROS2Robot,
 }
 
+# LeRobot is optional; register only if installable surface is present.
+try:
+    from hack.robot.lerobot_adapter import LeRobotAdapter
+
+    ADAPTERS["lerobot"] = LeRobotAdapter
+except ImportError:  # pragma: no cover
+    pass
+
 
 def make(name: str, **kwargs: object) -> RobotAdapter:
     if name not in ADAPTERS:

@@ -18,7 +18,7 @@ Judges see: one live run + one backup recording + a 60-second narrated summary. 
    - 20s: one surprising behavior you're proud of
    - 10s: what it runs on (ZGX Nano, local, models listed)
 5. **Backup:** `hack demo play runs/submit.jsonl` must work offline. Test it with the network cable unplugged.
-6. **Judge handoff:** print a one-page sheet with: team name, what to watch for, how to trigger behaviors, fallback command.
+6. **Judge handoff:** print a one-page sheet headed with team name **Just Build**, what to watch for, how to trigger behaviors, fallback command.
 
 ## Cut-list (apply ruthlessly if time < 20 min)
 

@@ -1,37 +1,93 @@
+# Single tuning surface for the agent runtime.
+#
+# Three model profiles are provided:
+#   - Mac dev (default active below)
+#   - ZGX Nano with Ollama (cheap/easy fallback)
+#   - ZGX Nano with NVIDIA NIM + Nemotron (day-of primary, matches NVIDIA's
+#     reference Reachy playbook)
+# Swap by copy/pasting blocks — no code changes needed.
+
 llm:
-  # Mac dev default: qwen2.5:7b (fits comfortably). On the ZGX upgrade to qwen2.5:14b-instruct or llama-3.3-70b via NIM.
+  # DAYOF: B — flip provider/model/base_url to match DAY_OF_DECISIONS.md §2.
+  # Mac dev default: qwen2.5:7b (was :1.5b — swapped up for spatial reasoning).
   provider: ollama          # ollama | nim | openai-compat
   model: qwen2.5:7b
   base_url: http://localhost:11434
   temperature: 0.3
   max_tokens: 512
 
+  # --- ZGX Nano: Ollama (simple fallback) ---
+  # provider: ollama
+  # model: qwen2.5:14b-instruct
+  # base_url: http://<zgx-a>:11434
+
+  # --- ZGX Nano: NIM + Nemotron (primary, matches NVIDIA's Reachy stack) ---
+  # provider: openai-compat
+  # model: nvidia/Nemotron-3-Nano-30B-A3B
+  # base_url: http://<zgx-a>:8000/v1
+
 vlm:
-  # Note: Ollama tag is `qwen2.5vl:7b` (no dash). Day-of NIM may use `qwen2.5-vl:7b`.
+  # DAYOF: B — pick VLM model per DAY_OF_DECISIONS.md §3. Set frame_fps: 0 if vision is irrelevant.
+  # Ollama tag is `qwen2.5vl:7b` (no dash).
   provider: ollama
   model: qwen2.5vl:7b
   base_url: http://localhost:11434
   frame_fps: 2
   downscale_to: 768
 
+  # --- ZGX Nano: NIM + Nemotron VL ---
+  # provider: openai-compat
+  # model: nvidia/Nemotron-Nano-12B-v2-VL
+  # base_url: http://<zgx-a>:8001/v1
+
+# Intent router — small LLM that triages input before the big planner.
+# Unset this block to disable routing (planner handles every turn).
+router:
+  # DAYOF: B — enable only if challenge is conversational (Decisions §4).
+  enabled: false                 # flip to true once phi3:mini is pulled
+  provider: ollama
+  model: phi3:mini               # ~3.8B. `qwen2.5:1.5b` is an alternative.
+  base_url: http://localhost:11434
+  # Routes that skip the full planner and use cheap canned behavior:
+  shortcut_routes: [chit_chat]
+
 stt:
+  # Mac dev: faster-whisper.
   provider: faster-whisper
   model: large-v3-turbo
   language: en
   vad: silero
 
+  # --- ZGX Nano: NVIDIA Riva Parakeet (preinstalled on DGX OS) ---
+  # provider: riva
+  # model: nvidia/riva-parakeet-ctc-1.1B
+  # server: grpc://<zgx-b>:50051
+
 tts:
+  # Mac dev: Piper if installed, else macOS `say`.
   provider: piper
   voice: en_US-amy-medium
   barge_in: true
 
+  # --- ZGX Nano: Kokoro (preferred, 82 M, very fluent, used by NVIDIA) ---
+  # provider: kokoro
+  # model: hexgrad/Kokoro-82M
+  # voice: af_heart
+
 agent:
   tick_hz: 5
-  max_tool_calls_per_turn: 4
+  max_tool_calls_per_turn: 5     # NVIDIA's NAT default; safety cap on spirals.
+  # DAYOF: B — replace system_prompt + observation_prompt with the profile from Decisions §8.
   system_prompt: |
     You are a physical-robot agent. You receive observations from cameras,
-    microphones, and robot state, and choose tools to act. Act decisively.
-    Prefer one committed action over deliberation. Speak briefly when useful.
+    microphones, and robot state, and choose tools to act.
+
+    STRICT RULE: only act when the transcript begins with a `[PLAN] Step X/N: '...'`
+    line. When such a line is present, emit tool calls that execute EXACTLY that step.
+    When there is no `[PLAN] Step` line in the transcript, return `{"calls": []}` —
+    do nothing. Never invent filler behaviour.
+
+    Act decisively within the current step; speak briefly when useful.
 
   observation_prompt: |
     List only what is clearly visible. If uncertain, say "uncertain".
@@ -39,11 +95,18 @@ agent:
     one salient event if any, else null.
 
 robot:
-  adapter: mock
+  # DAYOF: R — set to the adapter chosen in DAY_OF_DECISIONS.md §1.
+  adapter: mock                  # mock | http | ros2 | lerobot | <new-class>
   command_rate_hz: 10
+  # Continuous-tracking safety net between VLM calls (HALO / ByteTrack pattern).
+  tracker:
+    # DAYOF: B — enable on latency fallback (Decisions §7) or when tracking a moving target.
+    enabled: true
+    type: csrt                   # cv2 CSRT — robust, ~60 FPS on laptop
   safety:
-    max_linear_speed: 0.3   # m/s
-    max_angular_speed: 1.0  # rad/s
+    # DAYOF: R — tighten to actual robot limits (intake §3 "Known safety limits").
+    max_linear_speed: 0.3        # m/s
+    max_angular_speed: 1.0       # rad/s
 
 logging:
   jsonl_dir: runs/

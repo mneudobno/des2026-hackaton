@@ -1,0 +1,70 @@
+# Rehearsal profile using Gemini Flash for BOTH planner and VLM.
+# Mac-friendly: no Ollama needed. Requires GEMINI_API_KEY in .env.
+# Default profile for post-Ollama rehearsals.
+
+llm:
+  provider: gemini
+  model: gemini-flash-latest
+  base_url: https://generativelanguage.googleapis.com/v1beta
+  temperature: 0.3
+  max_tokens: 512
+
+vlm:
+  provider: gemini
+  model: gemini-flash-latest
+  base_url: https://generativelanguage.googleapis.com/v1beta
+  frame_fps: 2
+  downscale_to: 768
+  # on_cue = VLM runs only on the tick that installed a fresh plan; subsequent
+  # plan-execution ticks skip VLM. Halves request rate, fits Gemini free tier.
+  run_mode: on_cue
+
+router:
+  enabled: false
+  provider: gemini
+  model: gemini-flash-latest
+  base_url: https://generativelanguage.googleapis.com/v1beta
+  shortcut_routes: [chit_chat]
+
+stt:
+  provider: faster-whisper
+  model: large-v3-turbo
+  language: en
+  vad: silero
+
+tts:
+  provider: piper
+  voice: en_US-amy-medium
+  barge_in: true
+
+agent:
+  tick_hz: 5
+  max_tool_calls_per_turn: 5
+  system_prompt: |
+    You are a physical-robot agent. You receive observations from cameras,
+    microphones, and robot state, and choose tools to act.
+
+    STRICT RULE: only act when the transcript begins with a `[PLAN] Step X/N: '...'`
+    line. When such a line is present, emit tool calls that execute EXACTLY that step.
+    When there is no `[PLAN] Step` line in the transcript, return `{"calls": []}` —
+    do nothing. Never invent filler behaviour.
+
+    Act decisively within the current step; speak briefly when useful.
+  observation_prompt: |
+    List only what is clearly visible. If uncertain, say "uncertain".
+    Fields: objects (with rough positions), scene summary (<=15 words),
+    one salient event if any, else null.
+
+robot:
+  adapter: mock
+  command_rate_hz: 10
+  tracker:
+    enabled: true
+    type: csrt
+  safety:
+    max_linear_speed: 0.3
+    max_angular_speed: 1.0
+
+logging:
+  jsonl_dir: runs/
+  video: true

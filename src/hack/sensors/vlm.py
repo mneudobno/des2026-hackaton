@@ -4,9 +4,11 @@ import base64
 import json
 
 import cv2
-import httpx
 import numpy as np
 from pydantic import BaseModel, Field
+
+from hack.models import make_vlm
+from hack.models.base import VLMAdapter
 
 
 class ObservedObject(BaseModel):
@@ -30,45 +32,62 @@ def _encode_jpeg(img: np.ndarray, quality: int = 80) -> str:
 
 
 class VLMClient:
-    """Minimal Ollama-compatible vision client (works with NIM via OpenAI-compat too).
+    """Structured VLM wrapper around a `VLMAdapter` (ollama / gemini / NIM-compat).
 
-    Returns a structured Observation. If JSON parsing fails, falls back to raw text.
+    Returns a pydantic `Observation`. If the adapter's output isn't valid JSON,
+    falls back to an embedded-object extraction, then to raw text.
     """
 
     def __init__(
         self,
+        adapter: VLMAdapter | None = None,
+        # Legacy kwargs — used only when `adapter` is not provided.
         model: str = "qwen2.5vl:7b",
         base_url: str = "http://localhost:11434",
+        # DAYOF: B — override this prompt with task-specific grounding (see DAY_OF_DECISIONS.md §8).
         prompt: str = (
             "List only what is clearly visible. Respond with JSON: "
             '{"objects":[{"label":"...","rough_position":"...","confidence":0..1}],'
             '"scene":"<=15 words","salient_event":"... or null"}'
         ),
-        timeout: float = 20.0,
+        timeout: float = 60.0,
+        provider: str = "ollama",
+        api_key_env: str = "GEMINI_API_KEY",
     ) -> None:
-        self.model = model
-        self.base_url = base_url.rstrip("/")
-        self.prompt = prompt
-        self.timeout = timeout
+        if adapter is None:
+            adapter = make_vlm({
+                "adapter": provider,
+                "model": model,
+                "base_url": base_url,
+                "timeout": timeout,
+                "api_key_env": api_key_env,
+            }, prompt=prompt)
+        self.adapter = adapter
+        self.prompt = prompt or adapter.prompt
+
+    @property
+    def model(self) -> str:
+        return self.adapter.model
+
+    @property
+    def base_url(self) -> str:
+        return self.adapter.base_url
+
+    @property
+    def provider(self) -> str:
+        return self.adapter.name
 
     async def observe(self, image: np.ndarray) -> Observation:
         b64 = _encode_jpeg(image)
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            r = await client.post(
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": self.prompt,
-                    "images": [b64],
-                    "stream": False,
-                    "format": "json",
-                    "options": {"temperature": 0.1},
-                },
-            )
-            r.raise_for_status()
-            text = r.json().get("response", "")
+        text = await self.adapter.describe(b64, override_prompt=self.prompt)
         try:
-            parsed = json.loads(text)
-            return Observation(**parsed)
+            return Observation(**json.loads(text))
         except Exception:
-            return Observation(raw=text)
+            pass
+        start, end = text.find("{"), text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                return Observation(**json.loads(text[start : end + 1]))
+            except Exception:
+                pass
+        return Observation(raw=text, scene=text[:120])

@@ -27,6 +27,8 @@ class HTTPRobot(RobotAdapter):
             self._client = None
 
     async def _post(self, action: str, **payload: float | str) -> None:
+        # DAYOF: R — confirm route "/command" and JSON body shape match the actual robot API.
+        # DAYOF: R — add auth header here if the robot requires it (e.g. self._client.headers["X-Auth"]=...).
         assert self._client is not None
         r = await self._client.post("/command", json={"action": action, **payload})
         r.raise_for_status()
@@ -44,6 +46,7 @@ class HTTPRobot(RobotAdapter):
         await self._post("set_joint", name=name, value=value)
 
     async def get_state(self) -> RobotState:
+        # DAYOF: R — confirm "/state" path and response shape; map to RobotState fields.
         assert self._client is not None
         r = await self._client.get("/state")
         r.raise_for_status()

@@ -24,6 +24,8 @@ class Camera:
 
     def __init__(
         self,
+        # DAYOF: B/R — if the robot owns the camera stream (intake §4), replace this class with
+        # a thin adapter that reads frames from the robot SDK and yields Frame records.
         device: int = 0,
         fps: float = 2.0,
         downscale_to: int = 768,

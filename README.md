@@ -1,6 +1,6 @@
-# hack — DIS2026X1 robot-agent hackathon
+# hack — team "Just Build" @ DIS2026X1
 
-Pluggable AI-agent runtime for the Data Innovation Summit 2026 robot hackathon (Stockholm, 2026-05-08).
+Pluggable AI-agent runtime for the Data Innovation Summit 2026 robot hackathon (Stockholm, 2026-05-08). Team: **Just Build**.
 
 ## Setup
 
@@ -24,4 +24,4 @@ hack ui                               # dashboard on :8000
 hack demo record && hack demo play    # for judges
 ```
 
-See `docs/day_of_playbook.md` for the minute-by-minute plan.
+See `docs/day_of_playbook.md` for the minute-by-minute plan, and **`docs/PREP_TODO.md` for current prep status and what's left**.

@@ -1,4 +1,11 @@
-# Day-of playbook — DIS2026X1, 2026-05-08
+# Day-of playbook — team "Just Build" @ DIS2026X1, 2026-05-08
+
+> **This file is strategy** (roles, timing, cut-list). The **tactical** day-of files are:
+> - [`DAY_OF_INTAKE.md`](./DAY_OF_INTAKE.md) — blank form filled during intro
+> - [`DAY_OF_DECISIONS.md`](./DAY_OF_DECISIONS.md) — intake → repo choice matrix
+> - [`DAY_OF_TASKS.md`](./DAY_OF_TASKS.md) — live task board (tick as you go)
+>
+> Run `uv run hack intake` after the challenge intro for a single-screen punch-list.
 
 ## Schedule (event-given)
 
@@ -11,11 +18,13 @@
 
 ## Roles (team of 3)
 
-- **Robot lead (R)** — implements the `RobotAdapter`. First task: read SDK sample, get `hack robot probe` green.
-- **Brain lead (B)** — tunes prompts in `configs/agent.yaml`, runs `hack agent replay` loops.
-- **Demo lead (D)** — runs the dashboard, captures clean takes, builds the 60-second narration. Also: utility/ops (kill flaky processes, restart serving, watch latency).
+Role assignments are TBD — decide during the first sync and fill in below:
 
-Roles are sticky. Do not swap mid-build.
+- **Robot lead (R)** — _______ — implements the `RobotAdapter`. First task: read SDK sample, get `hack robot probe` green.
+- **Brain lead (B)** — _______ — tunes prompts in `configs/agent.yaml`, runs `hack agent replay` loops.
+- **Demo lead (D)** — _______ — runs the dashboard, captures clean takes, builds the 60-second narration. Also: utility/ops (kill flaky processes, restart serving, watch latency).
+
+Candidates: **Timur**, **Kamila**, **Simon**. Roles are sticky once set — do not swap mid-build.
 
 ## Minute-by-minute
 

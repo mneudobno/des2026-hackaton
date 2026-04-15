@@ -1,3 +1,13 @@
+"""Day-of dashboard — minimal, no rehearsal-only features.
+
+- `/` HTML page with live camera + SSE event stream
+- `/camera.jpg` serves `runs/last_frame.jpg`
+- `/events` tails the newest `runs/*.jsonl`
+
+Rehearsal-only affordances (mic cue, scenario controls) live in
+`hack.rehearsal.dashboard` so this file stays trusted for the judged demo.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,26 +20,30 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 
 app = FastAPI(title="hack dashboard")
 
+
 INDEX_HTML = """
 <!doctype html>
 <html><head><title>hack dashboard</title>
 <style>
 body{margin:0;background:#0b0d10;color:#e6e6e6;font:14px/1.4 -apple-system,monospace}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px;height:100vh;box-sizing:border-box}
-.panel{background:#15181c;border:1px solid #232830;border-radius:8px;padding:12px;overflow:auto}
-h2{margin:0 0 8px;font-size:13px;color:#7aa2ff;text-transform:uppercase;letter-spacing:.08em}
+.grid{display:grid;grid-template-columns:3fr 2fr;gap:12px;padding:12px;height:100vh;box-sizing:border-box}
+.panel{background:#15181c;border:1px solid #232830;border-radius:8px;padding:12px;overflow:auto;display:flex;flex-direction:column;min-height:0}
+.hdr{display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap}
+h2{margin:0;font-size:13px;color:#7aa2ff;text-transform:uppercase;letter-spacing:.08em}
 .kind{display:inline-block;padding:1px 6px;border-radius:3px;font-size:11px;margin-right:6px}
 .observation{background:#1a3050;color:#9cc4ff}
 .plan{background:#3a2a55;color:#d0a8ff}
 .action{background:#1f3d2a;color:#9be8a8}
-pre{margin:0;white-space:pre-wrap;word-break:break-word}
+.info{background:#2a2a2a;color:#c0c0c0}
+pre{margin:0;white-space:pre-wrap;word-break:break-word;font-size:11px}
 .row{border-bottom:1px solid #1f242a;padding:6px 0}
-img{max-width:100%;border-radius:6px}
+img{width:100%;height:auto;border-radius:6px;image-rendering:pixelated;flex:1;object-fit:contain;background:#000}
+#stream{flex:1;overflow-y:auto}
 </style></head>
 <body>
 <div class="grid">
-  <div class="panel"><h2>Live camera</h2><img id="cam" src="/camera.jpg"/></div>
-  <div class="panel"><h2>Stream</h2><div id="stream"></div></div>
+  <div class="panel"><div class="hdr"><h2>Live camera</h2></div><img id="cam" src="/camera.jpg"/></div>
+  <div class="panel"><div class="hdr"><h2>Stream</h2></div><div id="stream"></div></div>
 </div>
 <script>
 const stream = document.getElementById("stream");
@@ -59,14 +73,12 @@ async def camera_jpg():
     p = Path("runs/last_frame.jpg")
     if p.exists():
         return StreamingResponse(p.open("rb"), media_type="image/jpeg")
-    # 1x1 transparent gif fallback
     import base64
     gif = base64.b64decode("R0lGODlhAQABAAAAACwAAAAAAQABAAA=")
     return StreamingResponse(iter([gif]), media_type="image/gif")
 
 
 def _tail_jsonl(path: Path) -> AsyncIterator[str]:
-    """Tail a jsonl file as SSE."""
     async def gen() -> AsyncIterator[str]:
         if not path.exists():
             yield "data: {\"kind\":\"info\",\"msg\":\"no trace yet\"}\n\n"

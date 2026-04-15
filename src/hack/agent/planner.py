@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import httpx
 from pydantic import BaseModel
 
 from hack.agent.tools import TOOL_SCHEMAS, ToolCall
+from hack.models import make_llm
+from hack.models.base import LLMAdapter, load_dotenv as _load_dotenv  # re-export for legacy callers
 
 
 class PlannerInput(BaseModel):
@@ -22,26 +23,54 @@ class Plan(BaseModel):
 
 
 class OllamaPlanner:
-    """Ollama JSON-mode planner. Works with any OpenAI-compatible /api/generate too.
+    """Prompt builder + JSON parser. Transport is delegated to an `LLMAdapter`.
 
-    Day-of: swap base_url to the NIM-compat endpoint and adjust the model name.
+    The historical name is kept for backwards compatibility; the class now works
+    with any adapter in `hack.models.LLM_ADAPTERS` (ollama, gemini, openai-compat, nim).
     """
 
     def __init__(
         self,
+        adapter: LLMAdapter | None = None,
+        system_prompt: str = "",
+        max_tool_calls: int = 4,
+        # Legacy kwargs — used only when `adapter` is not provided.
         model: str = "qwen2.5:7b",
         base_url: str = "http://localhost:11434",
-        system_prompt: str = "",
         temperature: float = 0.3,
-        max_tool_calls: int = 4,
-        timeout: float = 30.0,
+        timeout: float = 60.0,
+        provider: str = "ollama",
+        api_key_env: str = "GEMINI_API_KEY",
     ) -> None:
-        self.model = model
-        self.base_url = base_url.rstrip("/")
+        if adapter is None:
+            adapter = make_llm({
+                "adapter": provider,
+                "model": model,
+                "base_url": base_url,
+                "temperature": temperature,
+                "timeout": timeout,
+                "api_key_env": api_key_env,
+            })
+        self.adapter = adapter
         self.system_prompt = system_prompt
-        self.temperature = temperature
         self.max_tool_calls = max_tool_calls
-        self.timeout = timeout
+
+    # --- introspection helpers used by runtime/dashboard ---
+    @property
+    def model(self) -> str:
+        return self.adapter.model
+
+    @property
+    def base_url(self) -> str:
+        return self.adapter.base_url
+
+    @property
+    def provider(self) -> str:
+        return self.adapter.name
+
+    @property
+    def timeout(self) -> float:
+        return self.adapter.timeout
 
     def _build_prompt(self, inp: PlannerInput) -> str:
         return (
@@ -58,21 +87,23 @@ class OllamaPlanner:
 
     async def plan(self, inp: PlannerInput) -> Plan:
         prompt = self._build_prompt(inp)
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            r = await client.post(
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "format": "json",
-                    "options": {"temperature": self.temperature},
-                },
-            )
-            r.raise_for_status()
-            text = r.json().get("response", "")
-        try:
-            data = json.loads(text)
-            return Plan(**data)
-        except Exception:
-            return Plan(calls=[], note=f"parse_failed: {text[:120]}")
+        text = await self.adapter.complete(prompt, json_mode=True)
+        for candidate in (text, _extract_json_object(text)):
+            if not candidate:
+                continue
+            try:
+                return Plan(**json.loads(candidate))
+            except Exception:
+                continue
+        return Plan(calls=[], note=f"parse_failed: {text[:120]}")
+
+
+def _extract_json_object(text: str) -> str:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        return text[start : end + 1]
+    return ""
+
+
+__all__ = ["OllamaPlanner", "PlannerInput", "Plan", "_load_dotenv"]
