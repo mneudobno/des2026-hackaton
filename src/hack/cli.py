@@ -93,6 +93,72 @@ def rehearse(
     console.print("Append one line to [cyan]docs/REHEARSALS.md[/] — date, scenario, key metric, insight, action.")
 
 
+# ---------- monitor (correctness watcher) ----------
+@app.command()
+def monitor(
+    follow: bool = typer.Option(True, "--follow/--no-follow", help="Tail the latest trace in real-time (Ctrl-C to stop)."),
+) -> None:
+    """Watch the latest rehearsal/agent JSONL for correctness issues in real-time.
+
+    Checks rotation overshoot, sign flips, safety clamps, semantic mismatches,
+    and return-to-origin failures. Writes `runs/issues.ndjson` + a markdown
+    report when done.
+    """
+    import asyncio as _aio
+
+    from hack.observation.correctness_monitor import CorrectnessMonitor
+    runs_dir = Path("runs")
+    # Find latest JSONL
+    traces = sorted(runs_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not traces:
+        console.print("[red]no JSONL traces found in runs/[/]")
+        raise typer.Exit(1)
+    trace = traces[0]
+    console.print(f"[cyan]monitoring[/] {trace}")
+    mon = CorrectnessMonitor(runs_dir)
+
+    import json as _json
+
+    async def _watch() -> None:
+        with trace.open() as fh:
+            if not follow:
+                fh.seek(0)
+            else:
+                fh.seek(0, 2)
+            while True:
+                line = fh.readline()
+                if not line:
+                    if not follow:
+                        break
+                    await _aio.sleep(0.2)
+                    continue
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = _json.loads(line)
+                except _json.JSONDecodeError:
+                    continue
+                mon.check_event(ev)
+                # Print issues as they appear
+                if mon.issues and mon.issues[-1].tick == ev.get("tick"):
+                    latest = mon.issues[-1]
+                    icon = {"error": "[red]ERR[/]", "warning": "[yellow]WARN[/]", "info": "[dim]INFO[/]"}.get(latest.severity, "")
+                    console.print(f"  {icon} t{latest.tick} [{latest.category}] {latest.description[:100]}")
+                    if latest.suggested_fix:
+                        console.print(f"       [dim]fix: {latest.suggested_fix[:100]}[/]")
+                if ev.get("kind") == "stop" and follow:
+                    break
+
+    try:
+        _aio.run(_watch())
+    except KeyboardInterrupt:
+        pass
+    report = mon.write_report()
+    console.print(f"\n[green]{len(mon.issues)} issues logged[/] → {report}")
+    console.print(mon.summarise())
+
+
 # ---------- regression (cue test suite) ----------
 @app.command()
 def regression(

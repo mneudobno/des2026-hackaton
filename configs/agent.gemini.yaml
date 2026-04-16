@@ -4,14 +4,14 @@
 
 llm:
   provider: gemini
-  model: gemini-flash-latest
+  model: gemini-2.5-flash-lite
   base_url: https://generativelanguage.googleapis.com/v1beta
   temperature: 0.3
   max_tokens: 512
 
 vlm:
   provider: gemini
-  model: gemini-flash-latest
+  model: gemini-2.5-flash-lite
   base_url: https://generativelanguage.googleapis.com/v1beta
   frame_fps: 2
   downscale_to: 768
@@ -22,7 +22,7 @@ vlm:
 router:
   enabled: false
   provider: gemini
-  model: gemini-flash-latest
+  model: gemini-2.5-flash-lite
   base_url: https://generativelanguage.googleapis.com/v1beta
   shortcut_routes: [chit_chat]
 
@@ -63,7 +63,11 @@ robot:
     type: csrt
   safety:
     max_linear_speed: 0.3
-    max_angular_speed: 1.0
+    max_angular_speed: 0.6
+  calibration:
+    linear_scale: 1.0
+    angular_scale: 1.0
+    prefer_forward_walk: true
 
 logging:
   jsonl_dir: runs/

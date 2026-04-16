@@ -106,7 +106,16 @@ robot:
   safety:
     # DAYOF: R — tighten to actual robot limits (intake §3 "Known safety limits").
     max_linear_speed: 0.3        # m/s
-    max_angular_speed: 1.0       # rad/s
+    max_angular_speed: 0.6       # rad/s — matches decomposer prompt limit
+  calibration:
+    # DAYOF: R — measure actual robot drift then adjust these. 1.0 = perfect.
+    # If robot consistently undershoots by 15%, set to 1.18 (1/0.85).
+    linear_scale: 1.0
+    angular_scale: 1.0
+    # DAYOF: R — set true for real robots that can't strafe backward.
+    # When true, return-to-origin emits: turn toward target → walk forward → turn back.
+    # When false (default), uses body-frame dx/dy directly (works for omnidirectional / sim).
+    prefer_forward_walk: true
 
 logging:
   jsonl_dir: runs/

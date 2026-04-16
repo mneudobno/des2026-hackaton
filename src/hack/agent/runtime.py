@@ -16,6 +16,7 @@ from hack.agent.plan_memory import (
     plan_hint,
     required_tools_for_step,
     validate_call_against_step,
+    validate_plan,
 )
 from hack.agent.planner import OllamaPlanner, PlannerInput
 from hack.agent.tools import ToolBox, ToolCall
@@ -70,9 +71,25 @@ async def run(
                     transcript.append(live_text)
                     log.log("live_cue", text=live_text)
                     pose = (await robot.get_state()).pose
-                    steps = await decompose(live_text, planner)
+                    from hack.agent.deterministic_plans import classify_cue_smart, generate_plan
+                    det_case = await classify_cue_smart(live_text, planner)
+                    safety = cfg.get("robot", {}).get("safety", {})
+                    if det_case:
+                        calibration = cfg.get("robot", {}).get("calibration")
+                        steps = generate_plan(det_case, live_text, pose, safety, calibration)
+                        log.log("alert", code="deterministic-plan",
+                                message=f"classified as '{det_case}' — {len(steps)} computed step(s)")
+                    else:
+                        steps = await decompose(live_text, planner, pose=pose)
                     if steps:
-                        safety = cfg.get("robot", {}).get("safety", {})
+                        if not det_case:
+                            ok, corrected, reason = await validate_plan(live_text, steps, planner, pose=pose)
+                            if not ok and corrected:
+                                log.log("alert", code="plan-corrected", message=f"validator corrected: {reason}")
+                                steps = corrected
+                            elif not ok:
+                                log.log("alert", code="plan-rejected", message=f"validator rejected: {reason}")
+                                continue
                         steps = expand_plan_steps(steps, safety)
                         plan_memory = PlanMemory(cue=live_text, steps=steps, origin=(pose[0], pose[1]))
                         log.log("plan_installed", cue=live_text, steps=plan_memory.steps_to_dicts(),

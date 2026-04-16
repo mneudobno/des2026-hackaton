@@ -16,6 +16,7 @@ import numpy as np
 import yaml
 
 from hack.agent.logger import JsonlLogger
+from hack.observation.correctness_monitor import CorrectnessMonitor
 from hack.agent.plan_memory import (
     PlanMemory,
     clamp_call,
@@ -24,6 +25,7 @@ from hack.agent.plan_memory import (
     plan_hint,
     required_tools_for_step,
     validate_call_against_step,
+    validate_plan,
 )
 from hack.agent.planner import OllamaPlanner, PlannerInput
 from hack.agent.tools import ToolBox, ToolCall
@@ -178,6 +180,8 @@ async def rehearse(
     # Skip any pre-existing cues so we only consume new ones for this rehearsal.
     live_cues_cursor = live_cues_path.stat().st_size if live_cues_path.exists() else 0
     trace = JsonlLogger(trace_path)
+    correctness = CorrectnessMonitor(runs_dir)
+    trace.add_listener(correctness)  # every trace.log() feeds the monitor in real-time
     trace.log("start", scenario=scenario.name, config=cfg, adapter=adapter)
     # Model identity so the dashboard can show "running on: <model> @ <host>"
     def _host_label(url: str) -> str:
@@ -244,9 +248,29 @@ async def rehearse(
         # --- Cue → plan installation (one-shot decompose per new cue) ---
         if live_text:
             pose = (await (real_robot or robot).get_state()).pose
-            steps = await decompose(live_text, planner)
+            # Deterministic path first — no LLM if the cue is computable.
+            from hack.agent.deterministic_plans import classify_cue_smart, generate_plan
+            det_case = await classify_cue_smart(live_text, planner)
+            safety = cfg.get("robot", {}).get("safety", {})
+            if det_case:
+                calibration = cfg.get("robot", {}).get("calibration")
+                steps = generate_plan(det_case, live_text, pose, safety, calibration)
+                trace.log("alert", tick=tick, code="deterministic-plan",
+                          message=f"classified as '{det_case}' — {len(steps)} computed step(s), no LLM")
+            else:
+                steps = await decompose(live_text, planner, pose=pose)
             if steps:
-                safety = cfg.get("robot", {}).get("safety", {})
+                if not det_case:
+                    # Validate LLM-generated plan via a second LLM call.
+                    ok, corrected, reason = await validate_plan(live_text, steps, planner, pose=pose)
+                    if not ok and corrected:
+                        trace.log("alert", tick=tick, code="plan-corrected",
+                                  message=f"validator corrected plan: {reason}")
+                        steps = corrected
+                    elif not ok:
+                        trace.log("alert", tick=tick, code="plan-rejected",
+                                  message=f"validator rejected plan: {reason} — robot stays idle")
+                        continue
                 steps = expand_plan_steps(steps, safety)
                 plan_memory = PlanMemory(
                     cue=live_text, steps=steps,
@@ -490,6 +514,11 @@ async def rehearse(
         trace.log("clamp_summary", count=len(robot.clamp_events), events=robot.clamp_events)
     trace.log("stop", success=ok, reason=why)
     trace.close()
+    # Write correctness report for this rehearsal.
+    if correctness.issues:
+        report_path = correctness.write_report()
+        import sys
+        print(f"[correctness] {len(correctness.issues)} issue(s) logged → {report_path}", file=sys.stderr, flush=True)
     if real_mode:
         if real_cam is not None:
             await real_cam.__aexit__(None, None, None)
