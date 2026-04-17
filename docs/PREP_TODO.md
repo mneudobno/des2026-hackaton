@@ -130,7 +130,7 @@ Supporting artefacts (created during prep):
 - [x] ✅ `navigate_to_target` deterministic case — computes path to any named world object
 - [x] ✅ `classify_cue` priority fix — destination keywords → return_to_origin; backward keywords → single_move
 - [x] ✅ Scripted cue fix — scenario cues now trigger full decompose/classify pipeline
-- [ ] ⬜ Obstacle avoidance tuning — dodge clearance too small, 2 collisions on last run
+- [x] ✅ Obstacle avoidance tuning — lateral dodge passes all 3 scenarios (course/hard/wall) with zero collisions
 - [ ] ⬜ PlanMemory unit tests (`tests/test_plan_memory.py`)
 - [ ] ⬜ Commit + push latest classifier fix (`go back` → `return_to_origin`)
 - [ ] ⬜ DGX-class rehearsal with rented GPU (1 hour on Lambda/RunPod)

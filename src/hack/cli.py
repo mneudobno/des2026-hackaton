@@ -28,20 +28,21 @@ console = Console()
 # ---------- rehearse (pre-event + day-of) ----------
 @app.command()
 def rehearse(
-    scenario: str = typer.Option("pick-and-place", help="pick-and-place | follow | chit-chat | dance"),
+    scenario: str = typer.Option("pick-and-place", help="pick-and-place | follow | chit-chat | dance | obstacle-course"),
     config: Path = typer.Option(Path("configs/agent.yaml"), "--config"),
     ticks: int = typer.Option(0, help="Override scenario max_ticks (0 = use scenario default)."),
     save_frames: bool = typer.Option(False, help="Save every rendered frame to runs/rehearsal-frames-<ts>/."),
     display: bool = typer.Option(False, "--display/--no-display", help="Open an OpenCV window showing the robot live."),
     delay: float = typer.Option(0.0, help="Seconds to wait between ticks. Useful with --display (e.g. 0.4)."),
     adapter: str = typer.Option("virtual", help="virtual (Mac playground) | mock | http | ros2 | lerobot — use a real robot."),
+    tui: bool = typer.Option(False, "--tui/--no-tui", help="Show live Rich terminal dashboard alongside the rehearsal."),
 ) -> None:
     """Run a scripted rehearsal against a virtual-world mock robot and write metrics.
 
     Use this repeatedly on Mac+Ollama to shake out regressions before the event.
-    Each run writes runs/rehearsal-<scenario>-<ts>.json and a JSONL trace that
-    `hack ui` tails live. Add --display for a local OpenCV window animation;
-    press `q` in the window to abort early.
+    Each run writes runs/rehearsal-<scenario>-<ts>.json and a JSONL trace.
+    Add --tui for a live terminal dashboard (no browser needed).
+    Add --display for an OpenCV window animation.
     """
     import asyncio as _aio
     import time as _time
@@ -52,19 +53,45 @@ def rehearse(
     if save_frames:
         frames_dir = Path(f"runs/rehearsal-frames-{int(_time.time())}")
 
-    console.print(f"[cyan]rehearsing[/] scenario={scenario}  display={display}  delay={delay}s")
-    if not display:
-        console.print("  dashboard: [cyan]uv run hack ui[/] (in another shell) → http://127.0.0.1:8000")
+    console.print(f"[cyan]rehearsing[/] scenario={scenario}  display={display}  tui={tui}  delay={delay}s")
+    if not display and not tui:
+        console.print("  dashboard: [cyan]uv run hack tui[/] or [cyan]hack ui --rehearsal[/]")
+
+    async def _run_with_tui() -> Any:
+        """Run the rehearsal; if --tui, launch the TUI in parallel after a short delay."""
+        nonlocal tui
+        reh = do_rehearse(
+            scenario_name=scenario,
+            config_path=config,
+            max_ticks=(ticks or None),
+            image_save_dir=frames_dir,
+            display=display,
+            delay=delay,
+            adapter=adapter,
+        )
+        if tui:
+            import asyncio as _a
+            from hack.ui.terminal import run_tui
+            reh_task = _a.create_task(reh)
+            await _a.sleep(0.5)  # let the trace file be created
+            traces = sorted(Path("runs").glob(f"rehearsal-{scenario}-*.jsonl"),
+                            key=lambda p: p.stat().st_mtime, reverse=True)
+            if traces:
+                tui_task = _a.create_task(run_tui(traces[0], follow=True))
+                result = await reh_task
+                tui_task.cancel()
+                try:
+                    await tui_task
+                except _a.CancelledError:
+                    pass
+                return result
+            else:
+                return await reh_task
+        else:
+            return await reh
+
     t0 = _time.time()
-    m = _aio.run(do_rehearse(
-        scenario_name=scenario,
-        config_path=config,
-        max_ticks=(ticks or None),
-        image_save_dir=frames_dir,
-        display=display,
-        delay=delay,
-        adapter=adapter,
-    ))
+    m = _aio.run(_run_with_tui())
     total = _time.time() - t0
     path = write_summary(m, Path("runs"), config_snapshot=config)
     console.print(f"[green]wrote[/] {path}")
@@ -887,10 +914,27 @@ def sensors_mic(transcribe: bool = False, seconds: float = 5.0) -> None:
             console.print(f"[{s.start:5.2f}-{s.end:5.2f}] {s.text}")
 
 
-# ---------- ui ----------
+# ---------- tui (terminal UI) ----------
+@app.command("tui")
+def tui(
+    trace: Path = typer.Argument(None, help="JSONL trace to tail. Default: latest in runs/."),
+    no_follow: bool = typer.Option(False, "--no-follow", help="Read the whole file then exit (replay mode)."),
+) -> None:
+    """Live terminal dashboard — no browser needed. Works over SSH.
+
+    Shows: model status, plan decomposition, actions, voice commands, alerts, pose.
+    Tails the latest JSONL trace from runs/ (or a specific file).
+    Press Ctrl-C to exit.
+    """
+    from hack.ui.terminal import run_tui
+
+    asyncio.run(run_tui(trace_path=trace, follow=not no_follow))
+
+
+# ---------- ui (web) ----------
 @app.command("ui")
 def ui(host: str = "127.0.0.1", port: int = 8000, rehearsal: bool = typer.Option(False, "--rehearsal", help="Serve the rehearsal dashboard (adds mic + cue input). Never use on event day.")) -> None:
-    """Run the dashboard — the day-of one by default, the rehearsal one with --rehearsal."""
+    """Run the web dashboard — the day-of one by default, the rehearsal one with --rehearsal."""
     import uvicorn
     target = "hack.rehearsal.dashboard:app" if rehearsal else "hack.ui.app:app"
     if rehearsal:
