@@ -20,6 +20,7 @@ dependencies = [
     "jinja2>=3.1",
     "python-multipart>=0.0.9",
     "psutil>=5.9",
+    "textual>=8.2.3",
 ]
 
 [project.optional-dependencies]

@@ -920,15 +920,16 @@ def tui(
     trace: Path = typer.Argument(None, help="JSONL trace to tail. Default: latest in runs/."),
     no_follow: bool = typer.Option(False, "--no-follow", help="Read the whole file then exit (replay mode)."),
 ) -> None:
-    """Live terminal dashboard — no browser needed. Works over SSH.
+    """Full-screen terminal dashboard with command input — no browser needed.
 
     Shows: model status, plan decomposition, actions, voice commands, alerts, pose.
-    Tails the latest JSONL trace from runs/ (or a specific file).
-    Press Ctrl-C to exit.
+    Type a command at the bottom and press Enter to send it to the robot.
+    Works over SSH, in Kitty, iTerm, VS Code terminal.
+    Press Ctrl+C to quit.
     """
-    from hack.ui.terminal import run_tui
+    from hack.ui.tui_app import run_textual_tui
 
-    asyncio.run(run_tui(trace_path=trace, follow=not no_follow))
+    run_textual_tui(trace_path=trace, follow=not no_follow)
 
 
 # ---------- ui (web) ----------

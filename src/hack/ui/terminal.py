@@ -259,8 +259,17 @@ def _fmt_args(name: str, args: dict) -> str:
     return str(args) if args else ""
 
 
-async def run_tui(trace_path: Path | None = None, follow: bool = True) -> None:
-    """Main entry: tail a JSONL trace with Rich Live."""
+async def run_tui(
+    trace_path: Path | None = None,
+    follow: bool = True,
+    interactive: bool = False,
+) -> None:
+    """Main entry: tail a JSONL trace with Rich Live.
+
+    If `interactive=True`, accepts typed commands at the bottom of the screen.
+    Commands are written to `runs/live_cues.ndjson` — the rehearsal runner
+    picks them up on the next tick (same path as the web dashboard mic).
+    """
     runs = Path("runs")
     if trace_path is None:
         traces = sorted(runs.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -272,30 +281,68 @@ async def run_tui(trace_path: Path | None = None, follow: bool = True) -> None:
     ui = TerminalUI()
     console = Console()
     console.print(f"[dim]tailing {trace_path}[/]")
+    if interactive:
+        console.print("[dim]interactive mode: type a command and press Enter to send[/]")
 
-    with Live(ui.render(), console=console, refresh_per_second=4, screen=True) as live:
-        with trace_path.open() as fh:
-            if follow:
-                fh.seek(0, 2)
-            else:
-                fh.seek(0)
-            while True:
-                line = fh.readline()
+    # Input thread for interactive mode — writes to live_cues.ndjson.
+    input_buf: list[str] = []
+    input_active = True
+
+    def _input_thread() -> None:
+        import sys
+        cues_path = runs / "live_cues.ndjson"
+        while input_active:
+            try:
+                # Read one line from stdin (blocks).
+                line = sys.stdin.readline()
                 if not line:
-                    if not follow:
-                        break
-                    await asyncio.sleep(0.15)
-                    live.update(ui.render())
-                    continue
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                ui.feed(event)
-                live.update(ui.render())
-                if event.get("kind") == "stop" and follow:
-                    await asyncio.sleep(2)  # show final state briefly
                     break
+                text = line.strip()
+                if not text:
+                    continue
+                # Write to live_cues.ndjson.
+                cues_path.parent.mkdir(parents=True, exist_ok=True)
+                with cues_path.open("a") as f:
+                    f.write(json.dumps({"ts": time.time(), "text": text}) + "\n")
+                input_buf.append(text)
+            except EOFError:
+                break
+
+    import threading
+    input_thread = None
+    if interactive:
+        input_thread = threading.Thread(target=_input_thread, daemon=True)
+        input_thread.start()
+
+    try:
+        with Live(ui.render(), console=console, refresh_per_second=4, screen=not interactive) as live:
+            with trace_path.open() as fh:
+                if follow:
+                    fh.seek(0, 2)
+                else:
+                    fh.seek(0)
+                while True:
+                    line = fh.readline()
+                    if not line:
+                        if not follow:
+                            break
+                        await asyncio.sleep(0.15)
+                        # Show pending input in the footer.
+                        if input_buf:
+                            ui.voice.appendleft(f"[sent] {input_buf.pop(0)}")
+                        live.update(ui.render())
+                        continue
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    ui.feed(event)
+                    live.update(ui.render())
+                    if event.get("kind") == "stop" and follow:
+                        await asyncio.sleep(2)
+                        break
+    finally:
+        input_active = False
