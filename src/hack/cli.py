@@ -93,6 +93,132 @@ def rehearse(
     console.print("Append one line to [cyan]docs/REHEARSALS.md[/] — date, scenario, key metric, insight, action.")
 
 
+# ---------- test-all (single health gate) ----------
+@app.command("test-all")
+def test_all(
+    config: Path = typer.Option(Path("configs/agent.yaml"), "--config"),
+) -> None:
+    """Run ALL tests in sequence: unit tests → regression → obstacle-course.
+
+    Single pass/fail gate for any config or code change. Exit 0 = ship it.
+    """
+    import asyncio as _aio
+
+    results: list[tuple[str, bool, str]] = []
+
+    # 1. Unit tests
+    console.rule("[bold]1/3 Unit tests[/]")
+    r = subprocess.run(["uv", "run", "pytest", "tests/", "-q"], capture_output=True, text=True)
+    ok = r.returncode == 0
+    console.print(r.stdout[-200:] if r.stdout else "")
+    if not ok:
+        console.print(f"[red]{r.stderr[-200:]}")
+    results.append(("pytest", ok, f"exit={r.returncode}"))
+
+    # 2. Regression suite
+    console.rule("[bold]2/3 Regression suite[/]")
+    r = subprocess.run(
+        ["uv", "run", "hack", "regression", "--config", str(config), "--no-save"],
+        capture_output=True, text=True, timeout=300,
+    )
+    ok = r.returncode == 0
+    console.print(r.stdout[-500:] if r.stdout else "")
+    if not ok:
+        console.print(f"[red]{r.stderr[-200:]}")
+    results.append(("regression", ok, f"exit={r.returncode}"))
+
+    # 3. Obstacle-course (mock VLM, scripted cue, fully automated)
+    console.rule("[bold]3/3 Obstacle course[/]")
+    obstacle_cfg = Path("configs/agent.obstacle.yaml")
+    if obstacle_cfg.exists():
+        from hack.rehearsal.runner import rehearse as do_rehearse
+        m = _aio.run(do_rehearse(
+            scenario_name="obstacle-course",
+            config_path=obstacle_cfg,
+            max_ticks=80,
+            delay=0.0,
+        ))
+        ok = m.success
+        console.print(f"  {'[green]PASS' if ok else '[red]FAIL'} — {m.success_reason}[/]")
+        results.append(("obstacle-course", ok, m.success_reason))
+    else:
+        console.print("[yellow]skipped (no configs/agent.obstacle.yaml)[/]")
+        results.append(("obstacle-course", True, "skipped"))
+
+    # Summary
+    console.rule("[bold]Summary[/]")
+    total = len(results)
+    passed = sum(1 for _, ok, _ in results if ok)
+    for name, ok, detail in results:
+        icon = "[green]PASS[/]" if ok else "[red]FAIL[/]"
+        console.print(f"  {icon}  {name:20s}  {detail}")
+    console.print(f"\n  {'[green]ALL PASSED' if passed == total else f'[red]{total - passed} FAILED'}[/]  ({passed}/{total})")
+    if passed < total:
+        raise typer.Exit(1)
+
+
+# ---------- calibrate (day-of robot tuning) ----------
+@app.command()
+def calibrate(
+    adapter: str = typer.Option("mock", help="Robot adapter to calibrate."),
+    steps: int = typer.Option(3, help="Number of steps per measurement."),
+    base_url: str = typer.Option("http://127.0.0.1:9000", help="Base URL for HTTP adapter."),
+) -> None:
+    """Automated calibration: send known motions, measure actual, compute scale factors.
+
+    Prints a YAML block you can paste into your config's `robot.calibration` section.
+    """
+    from hack.robot import make
+
+    async def go() -> None:
+        kw: dict[str, object] = {}
+        if adapter == "http":
+            kw["base_url"] = base_url
+        try:
+            async with make(adapter, **kw) as r:
+                lin = 0.2
+                ang = 0.6
+
+                # Linear calibration
+                console.print(f"\n[cyan]Linear calibration[/]: sending {steps}× move(dx={lin})")
+                for i in range(steps):
+                    await r.move(lin, 0, 0)
+                    console.print(f"  step {i+1}/{steps} done")
+                expected_lin = lin * steps
+                console.print(f"\n  Robot should have moved [bold]{expected_lin:.2f}m[/] forward.")
+                actual_lin = typer.prompt("  How far did it actually move? (metres)", type=float, default=expected_lin)
+                lin_scale = expected_lin / actual_lin if actual_lin > 0 else 1.0
+
+                # Reset position
+                for i in range(steps):
+                    await r.move(-lin, 0, 0)
+
+                # Angular calibration
+                console.print(f"\n[cyan]Angular calibration[/]: sending {steps}× move(dtheta={ang})")
+                for i in range(steps):
+                    await r.move(0, 0, ang)
+                    console.print(f"  step {i+1}/{steps} done")
+                import math
+                expected_deg = math.degrees(ang * steps)
+                console.print(f"\n  Robot should have turned [bold]{expected_deg:.0f}°[/] left.")
+                actual_deg = typer.prompt("  How many degrees did it actually turn?", type=float, default=expected_deg)
+                ang_scale = expected_deg / actual_deg if actual_deg > 0 else 1.0
+
+                console.print("\n[green]Calibration results:[/]")
+                console.print(f"  linear_scale:  {lin_scale:.3f}")
+                console.print(f"  angular_scale: {ang_scale:.3f}")
+                console.print("\nPaste into your config under [cyan]robot.calibration:[/]")
+                console.print("  calibration:")
+                console.print(f"    linear_scale: {lin_scale:.3f}")
+                console.print(f"    angular_scale: {ang_scale:.3f}")
+                console.print("    prefer_forward_walk: true")
+        except Exception as e:
+            console.print(f"[red]calibration failed: {e}[/]")
+            raise typer.Exit(1)
+
+    asyncio.run(go())
+
+
 # ---------- monitor (correctness watcher) ----------
 @app.command()
 def monitor(
@@ -607,16 +733,20 @@ def robot_probe(adapter: str = "mock", base_url: str = "http://127.0.0.1:9000") 
         kw: dict[str, object] = {}
         if adapter == "http":
             kw["base_url"] = base_url
-        async with make(adapter, **kw) as r:
-            console.print(f"[bold]probing {adapter}[/]")
-            await r.move(0.05, 0.0, 0.0)
-            await r.move(0.0, 0.0, 0.1)
-            await r.set_joint("test", 0.5)
-            await r.grasp()
-            await r.release()
-            await r.emote("hello")
-            state = await r.get_state()
-            console.print(state)
+        try:
+            async with make(adapter, **kw) as r:
+                console.print(f"[bold]probing {adapter}[/]")
+                await r.move(0.05, 0.0, 0.0)
+                await r.move(0.0, 0.0, 0.1)
+                await r.set_joint("test", 0.5)
+                await r.grasp()
+                await r.release()
+                await r.emote("hello")
+                state = await r.get_state()
+                console.print(state)
+        except Exception as e:
+            console.print(f"[red]robot probe failed ({adapter}): {e}[/]")
+            raise typer.Exit(1)
 
     asyncio.run(go())
 
@@ -672,7 +802,11 @@ def agent_run(
     """Run the live agent loop."""
     from hack.agent.runtime import run as runtime_run
 
-    asyncio.run(runtime_run(robot_name=robot, config_path=config))
+    try:
+        asyncio.run(runtime_run(robot_name=robot, config_path=config))
+    except Exception as e:
+        console.print(f"[red]agent run failed: {e}[/]")
+        raise typer.Exit(1)
 
 
 @agent.command("replay")

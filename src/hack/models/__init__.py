@@ -28,10 +28,15 @@ LLM_ADAPTERS: dict[str, Callable[..., LLMAdapter]] = {
     "nim": OpenAICompatLLM,
 }
 
+def _make_mock_vlm(**kwargs: object) -> VLMAdapter:
+    from hack.models.mock_vlm import MockVLM
+    return MockVLM(**{k: v for k, v in kwargs.items() if k in ("model", "base_url", "prompt", "timeout", "api_key_env")})
+
+
 VLM_ADAPTERS: dict[str, Callable[..., VLMAdapter]] = {
     "ollama": OllamaVLM,
     "gemini": GeminiVLM,
-    # "mock" is registered but needs world_robot kwarg — runner handles this specially.
+    "mock": _make_mock_vlm,
 }
 
 

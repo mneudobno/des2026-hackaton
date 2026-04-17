@@ -1,0 +1,80 @@
+# Day-of ZGX Nano + NVIDIA NIM profile.
+# DAYOF: R — fill in <zgx-a> and <zgx-b> IPs from `hack recon`.
+
+llm:
+  # DAYOF: B — confirm NIM container name with `docker ps` output from recon.
+  provider: openai-compat
+  model: nvidia/Nemotron-3-Nano-30B-A3B
+  base_url: http://<zgx-a>:8000/v1
+  temperature: 0.3
+  max_tokens: 512
+  api_key_env: NIM_API_KEY
+
+vlm:
+  # DAYOF: B — if NIM VLM container present, use openai-compat; else Ollama.
+  provider: ollama
+  model: qwen2.5vl:7b
+  base_url: http://<zgx-a>:11434
+  frame_fps: 2
+  downscale_to: 768
+  run_mode: every_tick
+
+router:
+  # DAYOF: B — enable if challenge is conversational.
+  enabled: false
+  provider: openai-compat
+  model: microsoft/phi-3-mini-128k-instruct
+  base_url: http://<zgx-a>:8001/v1
+  shortcut_routes: [chit_chat]
+
+stt:
+  # DAYOF: B — Riva if preinstalled on ZGX; else faster-whisper.
+  provider: faster-whisper
+  model: large-v3-turbo
+  language: en
+  vad: silero
+
+tts:
+  provider: piper
+  voice: en_US-amy-medium
+  barge_in: true
+
+agent:
+  tick_hz: 5
+  max_tool_calls_per_turn: 5
+  # DAYOF: B — replace with task-specific prompt from DAY_OF_DECISIONS.md §8.
+  system_prompt: |
+    You are a physical-robot agent. You receive observations from cameras,
+    microphones, and robot state, and choose tools to act.
+
+    STRICT RULE: only act when the transcript begins with a `[PLAN] Step X/N: '...'`
+    line. When such a line is present, emit tool calls that execute EXACTLY that step.
+    When there is no `[PLAN] Step` line in the transcript, return `{"calls": []}` —
+    do nothing. Never invent filler behaviour.
+
+    Act decisively within the current step; speak briefly when useful.
+  observation_prompt: |
+    List only what is clearly visible. If uncertain, say "uncertain".
+    Fields: objects (with rough positions), scene summary (<=15 words),
+    one salient event if any, else null.
+
+robot:
+  # DAYOF: R — set to the adapter chosen in DAY_OF_DECISIONS.md §1.
+  adapter: mock
+  command_rate_hz: 10
+  tracker:
+    enabled: true
+    type: csrt
+  safety:
+    # DAYOF: R — tighten to actual robot limits.
+    max_linear_speed: 0.2
+    max_angular_speed: 0.6
+  calibration:
+    # DAYOF: R — run `hack calibrate --adapter <name>` and paste results here.
+    linear_scale: 1.0
+    angular_scale: 1.0
+    prefer_forward_walk: true
+
+logging:
+  jsonl_dir: runs/
+  video: true
