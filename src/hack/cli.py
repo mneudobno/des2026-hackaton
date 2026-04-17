@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import socket
 import subprocess
@@ -935,6 +936,46 @@ def tui(
     from hack.ui.tui_app import run_textual_tui
 
     run_textual_tui(trace_path=trace, follow=not no_follow, scenario=scenario, config=config)
+
+
+# ---------- world (Kitty image viewer) ----------
+@app.command("world")
+def world(
+    interval: float = typer.Option(0.3, help="Refresh interval in seconds."),
+    frame: Path = typer.Option(Path("runs/last_frame.jpg"), help="Frame path to display."),
+) -> None:
+    """Live world view using Kitty's icat — pixel-perfect, auto-refreshing.
+
+    Run in a separate Kitty pane alongside `hack tui`. Shows the full-resolution
+    OpenCV frame from the rehearsal runner, updated every --interval seconds.
+    Press Ctrl+C to stop.
+    """
+    import time as _time
+
+    if not shutil.which("kitten"):
+        console.print("[red]kitten not found — this command requires Kitty terminal[/]")
+        console.print("[dim]alternative: watch -n 0.5 kitten icat --clear runs/last_frame.jpg[/]")
+        raise typer.Exit(1)
+
+    console.print(f"[dim]watching {frame} every {interval}s — Ctrl+C to stop[/]")
+    try:
+        while True:
+            if frame.exists():
+                # Get terminal size in columns and use it to scale the image.
+                try:
+                    cols = os.get_terminal_size().columns
+                except OSError:
+                    cols = 80
+                subprocess.run(
+                    ["kitten", "icat", "--clear", "--align", "left",
+                     "--place", f"{cols}x{cols}@0x0",
+                     str(frame)],
+                    check=False,
+                )
+            _time.sleep(interval)
+    except KeyboardInterrupt:
+        # Clear the image on exit.
+        subprocess.run(["kitten", "icat", "--clear"], check=False)
 
 
 # ---------- ui (web) ----------
