@@ -126,6 +126,17 @@ Supporting artefacts (created during prep):
 - [x] ✅ `uv run hack regression` — curated mic-cue suite (`spin_360`, `go_to_random_and_back`) + `docs/TEST_CUES.md`; gates prompt/config changes
 - [x] ✅ Terminal-style rehearsal dashboard — Fallout-aesthetic green-on-black, plan decomposition panel, voice/alert/movement panels, errors-only alerts
 - [x] ✅ Gemini free-tier fallback (`configs/agent.gemini.yaml`) — strong planner when Mac hardware limits bite
+- [x] ✅ Obstacle simulation — `WorldObject.is_obstacle`, collision detection, mock VLM (`vlm.provider: mock`), avoidance system, `obstacle-course` scenario
+- [x] ✅ `navigate_to_target` deterministic case — computes path to any named world object
+- [x] ✅ `classify_cue` priority fix — destination keywords → return_to_origin; backward keywords → single_move
+- [x] ✅ Scripted cue fix — scenario cues now trigger full decompose/classify pipeline
+- [ ] ⬜ Obstacle avoidance tuning — dodge clearance too small, 2 collisions on last run
+- [ ] ⬜ PlanMemory unit tests (`tests/test_plan_memory.py`)
+- [ ] ⬜ Commit + push latest classifier fix (`go back` → `return_to_origin`)
+- [ ] ⬜ DGX-class rehearsal with rented GPU (1 hour on Lambda/RunPod)
+- [ ] ⬜ Terminal UI: plan decomposition panel not yet wired to events
+- [ ] ⬜ Add `navigate_to_goal` to regression suite (`docs/TEST_CUES.md`)
+- [ ] ⬜ Teammate onboarding: Kamila + Simon clone + run `hack doctor`
 - [x] ✅ `docs/REHEARSALS.md` — append-only rehearsal log (date, scenario, models, success, latency, insight, action)
 
 High-level beats (see `DAY_OF_TASKS.md` for atomic checklist):

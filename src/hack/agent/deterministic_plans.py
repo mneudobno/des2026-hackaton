@@ -409,28 +409,19 @@ def check_obstacle_avoidance(
     pos = nearest.get("rough_position", "ahead")
     ang = float(safety.get("max_angular_speed", 0.6))
     lin = float(safety.get("max_linear_speed", 0.2))
-    # Dodge direction: if obstacle is ahead-left, dodge right; else dodge left.
-    direction = -1 if "left" in pos else +1  # -1 = right, +1 = left
+    # Simple body-frame lateral dodge: step sideways + step forward to clear.
+    # direction: +dy = left, -dy = right. If obstacle is ahead-left, dodge right.
+    dy_sign = -1.0 if "left" in pos else +1.0
     return [
         PlanStep(
-            text=f"Turn away from obstacle ({pos})",
-            tool={"name": "move", "args": {"dx": 0.0, "dy": 0.0, "dtheta": round(direction * ang, 6)},
-                  "rationale": "dodge obstacle"},
+            text=f"Sidestep {'right' if dy_sign < 0 else 'left'} to dodge obstacle",
+            tool={"name": "move", "args": {"dx": 0.0, "dy": round(dy_sign * lin, 4), "dtheta": 0.0},
+                  "rationale": "lateral dodge"},
         ),
         PlanStep(
-            text="Sidestep past obstacle",
+            text="Advance past obstacle",
             tool={"name": "move", "args": {"dx": round(lin, 4), "dy": 0.0, "dtheta": 0.0},
-                  "rationale": "clear obstacle zone"},
-        ),
-        PlanStep(
-            text="Sidestep further",
-            tool={"name": "move", "args": {"dx": round(lin, 4), "dy": 0.0, "dtheta": 0.0},
-                  "rationale": "ensure clearance"},
-        ),
-        PlanStep(
-            text="Turn back to original heading",
-            tool={"name": "move", "args": {"dx": 0.0, "dy": 0.0, "dtheta": round(-direction * ang, 6)},
-                  "rationale": "restore heading after dodge"},
+                  "rationale": "clear obstacle"},
         ),
     ]
 
