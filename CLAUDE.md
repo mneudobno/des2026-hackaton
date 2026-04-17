@@ -46,6 +46,17 @@
 
 `docs/PREP_TODO.md` is the single source of truth for "what's done, what's next." **Keep it updated**: when you complete a substantive item, tick it there in the same change. When you discover new work, add it.
 
+## Auto log watching (mandatory)
+
+**Whenever the user starts a TUI session, rehearsal, or says "test it" / "try it" / "I'm testing":**
+1. Immediately arm a Monitor on the latest `runs/rehearsal-*.jsonl` using `/tmp/hack_watch.py`.
+2. Do NOT ask for permission — this is pre-approved.
+3. Report events inline (cues, plans, actions, alerts, STOP results).
+4. If the monitor times out and the user is still testing, re-arm it.
+5. After STOP, check `runs/issues.ndjson` for correctness findings.
+
+This must happen automatically every time without the user asking.
+
 ## Rehearsal loop (pre-event)
 
 `uv run hack rehearse --scenario <name>` runs the full agent against a virtual-world mock robot (synthetic frame rendering, scripted voice cues, success criterion). Writes `runs/rehearsal-<scenario>-<ts>.json` and prints regression diff vs previous run of the same scenario. Scenarios live in `src/hack/rehearsal/scenarios.py` — add new ones when the challenge shape suggests it.

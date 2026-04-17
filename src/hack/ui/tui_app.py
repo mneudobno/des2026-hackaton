@@ -470,26 +470,38 @@ class HackTUI(App):
 
     @work(thread=True)
     def _do_mic_record(self) -> None:
-        """Record audio in a thread, transcribe, send cue."""
-        import numpy as np
+        """Record audio in a thread, transcribe via subprocess to avoid fd conflicts."""
+        import subprocess as _sp
+        import tempfile
+
+        # Record to a temp WAV file using a subprocess (avoids sounddevice fd issues in Textual).
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            wav_path = tmp.name
 
         try:
-            import sounddevice as sd
-        except ImportError:
-            self.call_from_thread(self._log_alert, "sounddevice not installed — run: uv pip install sounddevice")
-            self._mic_recording = False
-            return
-
-        sr = 16000
-        duration = 3.0  # seconds
-
-        try:
-            audio = sd.rec(int(duration * sr), samplerate=sr, channels=1, dtype="float32")
-            sd.wait()
-            audio = np.squeeze(audio)
-            rms = float(np.sqrt(np.mean(audio**2)))
-            if rms < 0.005:
+            # Use sox (rec) if available, else python one-liner with sounddevice.
+            rec_script = f"""
+import sounddevice as sd, soundfile as sf, numpy as np
+audio = sd.rec(int(3 * 16000), samplerate=16000, channels=1, dtype='float32')
+sd.wait()
+audio = np.squeeze(audio)
+rms = float(np.sqrt(np.mean(audio**2)))
+if rms < 0.005:
+    print("SILENCE")
+else:
+    sf.write("{wav_path}", audio, 16000)
+    print("OK")
+"""
+            result = _sp.run(
+                ["uv", "run", "python", "-c", rec_script],
+                capture_output=True, text=True, timeout=10,
+            )
+            if "SILENCE" in result.stdout:
                 self.call_from_thread(self._mic_result, "(silence — no speech detected)")
+                self._mic_recording = False
+                return
+            if result.returncode != 0:
+                self.call_from_thread(self._log_alert, f"mic record error: {result.stderr[:80]}")
                 self._mic_recording = False
                 return
         except Exception as e:
@@ -497,24 +509,35 @@ class HackTUI(App):
             self._mic_recording = False
             return
 
-        # Transcribe with faster-whisper.
+        # Transcribe via subprocess (avoids CTranslate2 fork issues).
         try:
-            from faster_whisper import WhisperModel
-        except ImportError:
-            self.call_from_thread(self._log_alert, "faster-whisper not installed — run: uv pip install 'hack[audio]'")
-            self._mic_recording = False
-            return
-
-        try:
-            if not hasattr(self, "_whisper_model"):
-                self.call_from_thread(self._log_alert, "loading Whisper model (first time)…")
-                self._whisper_model = WhisperModel("small", device="auto", compute_type="auto")
-            segments, _ = self._whisper_model.transcribe(audio, language="en")
-            text = " ".join(s.text.strip() for s in segments).strip()
+            transcribe_script = f"""
+from faster_whisper import WhisperModel
+model = WhisperModel("small", device="auto", compute_type="auto")
+segments, _ = model.transcribe("{wav_path}", language="en")
+text = " ".join(s.text.strip() for s in segments).strip()
+print(text)
+"""
+            self.call_from_thread(self._log_alert, "transcribing…")
+            result = _sp.run(
+                ["uv", "run", "python", "-c", transcribe_script],
+                capture_output=True, text=True, timeout=30,
+            )
+            text = result.stdout.strip()
+            if result.returncode != 0 or not text:
+                self.call_from_thread(self._log_alert, f"whisper error: {result.stderr[:80]}")
+                self._mic_recording = False
+                return
         except Exception as e:
-            self.call_from_thread(self._log_alert, f"whisper error: {e}")
+            self.call_from_thread(self._log_alert, f"transcribe error: {e}")
             self._mic_recording = False
             return
+        finally:
+            import os
+            try:
+                os.unlink(wav_path)
+            except OSError:
+                pass
 
         self.call_from_thread(self._mic_result, text)
         self._mic_recording = False
