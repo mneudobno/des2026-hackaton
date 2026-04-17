@@ -44,10 +44,20 @@ class StatusBar(Static):
 
 
 class WorldMap(Static):
-    """ASCII top-down view of the virtual world."""
+    """ASCII top-down view of the virtual world — fills available space."""
 
-    MAP_W = 50
-    MAP_H = 20
+    DEFAULT_CSS = """
+    WorldMap {
+        height: 1fr;
+    }
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._pose = (0.0, 0.0, 0.0)
+        self._objects: list[dict] = []
+        self._collisions = 0
+        self._trail: list[tuple[float, float]] = []
 
     def render_world(
         self,
@@ -55,10 +65,29 @@ class WorldMap(Static):
         objects: list[dict],
         collisions: int = 0,
     ) -> None:
-        w, h = self.MAP_W, self.MAP_H
-        # Collect all points to compute viewport.
+        self._pose = pose
+        self._objects = objects
+        self._collisions = collisions
+        # Track robot trail (last 30 positions).
+        self._trail.append((pose[0], pose[1]))
+        if len(self._trail) > 30:
+            self._trail = self._trail[-30:]
+        self._refresh_map()
+
+    def _refresh_map(self) -> None:
+        # Use the widget's actual size to fill the panel.
+        size = self.size
+        w = max(size.width - 4, 30)  # leave room for borders
+        h = max(size.height - 4, 10)
+        pose = self._pose
+        objects = self._objects
+
+        # Viewport: fit all points with margin.
         xs = [pose[0]] + [o["x"] for o in objects]
         ys = [pose[1]] + [o["y"] for o in objects]
+        for tx, ty in self._trail:
+            xs.append(tx)
+            ys.append(ty)
         cx = 0.5 * (min(xs) + max(xs))
         cy = 0.5 * (min(ys) + max(ys))
         span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0) * 1.3
@@ -69,51 +98,120 @@ class WorldMap(Static):
             row = int((1.0 - (y - (cy - half)) / span) * (h - 1))
             return max(0, min(w - 1, col)), max(0, min(h - 1, row))
 
-        # Build grid.
-        grid: list[list[str]] = [[" " for _ in range(w)] for _ in range(h)]
+        # Build grid with background dots for spatial reference.
+        grid: list[list[str]] = [["·" if (r + c) % 6 == 0 else " " for c in range(w)] for r in range(h)]
+        # Color layer (markup per cell: None = default dim, or a style string).
+        colors: list[list[str | None]] = [[None for _ in range(w)] for _ in range(h)]
+
+        # Draw origin crosshair.
+        ox, oy = to_cell(0, 0)
+        if 0 <= oy < h:
+            for c in range(w):
+                if grid[oy][c] == " ":
+                    grid[oy][c] = "─"
+                    colors[oy][c] = "dim green"
+        if 0 <= ox < w:
+            for r in range(h):
+                if grid[r][ox] in (" ", "─"):
+                    grid[r][ox] = "│" if grid[r][ox] == " " else "┼"
+                    colors[r][ox] = "dim green"
+
+        # Draw obstacle exclusion zones (dashed circles approximated as ring of dots).
+        for obj in objects:
+            if not obj.get("is_obstacle"):
+                continue
+            radius = obj.get("radius", 0.1) + 0.08  # + robot radius
+            for angle_step in range(16):
+                a = angle_step * 2 * math.pi / 16
+                ex = obj["x"] + radius * math.cos(a)
+                ey = obj["y"] + radius * math.sin(a)
+                ec, er = to_cell(ex, ey)
+                if 0 <= er < h and 0 <= ec < w and grid[er][ec] in (" ", "·"):
+                    grid[er][ec] = "·"
+                    colors[er][ec] = "red"
+
+        # Draw robot trail.
+        for i, (tx, ty) in enumerate(self._trail[:-1]):
+            tc, tr = to_cell(tx, ty)
+            if 0 <= tr < h and 0 <= tc < w and grid[tr][tc] in (" ", "·", "─", "│"):
+                grid[tr][tc] = "·"
+                fade = "dim" if i < len(self._trail) // 2 else ""
+                colors[tr][tc] = f"{fade} cyan".strip()
 
         # Draw objects.
         for obj in objects:
             col, row = to_cell(obj["x"], obj["y"])
             if obj.get("is_obstacle"):
-                ch = "●"
+                ch, color = "⬤", "bold red"
             elif obj.get("is_container"):
-                ch = "◆"
+                ch, color = "◆", "bold green"
             elif obj.get("is_target"):
-                ch = "■"
+                ch, color = "■", "bold yellow"
             else:
-                ch = "□"
+                ch, color = "□", "bold blue"
             if 0 <= row < h and 0 <= col < w:
                 grid[row][col] = ch
-                # Label (first 3 chars of name, placed right of symbol).
-                label = obj.get("name", "")[:4]
-                for i, c in enumerate(label):
-                    lc = col + 1 + i
-                    if 0 <= lc < w:
-                        grid[row][lc] = c
+                colors[row][col] = color
+                # Label above the object.
+                label = obj.get("name", "")[:6]
+                label_row = row - 1
+                if label_row >= 0:
+                    for i, c in enumerate(label):
+                        lc = col - len(label) // 2 + i
+                        if 0 <= lc < w and grid[label_row][lc] in (" ", "·", "─"):
+                            grid[label_row][lc] = c
+                            colors[label_row][lc] = f"dim {color.replace('bold ', '')}"
 
-        # Draw robot.
+        # Draw robot direction beam (3 cells ahead showing facing direction).
         rx, ry = to_cell(pose[0], pose[1])
-        # Direction arrow based on theta.
         theta = pose[2]
-        arrows = "→↗↑↖←↙↓↘→"
-        idx = int(((theta + math.pi) / (2 * math.pi) * 8 + 2) % 8)
-        robot_ch = arrows[idx]
+        beam_chars = "·•·"
+        for bi in range(1, 4):
+            bx = pose[0] + bi * 0.06 * span * math.cos(theta)
+            by = pose[1] + bi * 0.06 * span * math.sin(theta)
+            bc, br = to_cell(bx, by)
+            if 0 <= br < h and 0 <= bc < w and grid[br][bc] in (" ", "·", "─", "│"):
+                grid[br][bc] = beam_chars[min(bi - 1, 2)]
+                colors[br][bc] = "bold green"
+
+        # Draw robot (always on top). 16 directions for ~22.5° resolution.
+        # Index 0 = 0 rad (east/right), counter-clockwise.
+        _ARROWS = "→⬈↗⬈↑⬉↖⬉←⬋↙⬋↓⬊↘⬊"
+        # theta=0 → east (index 0), theta=π/2 → north (index 4), etc.
+        idx = int((theta / (2 * math.pi) * 16 + 0.5) % 16)
+        robot_ch = _ARROWS[idx]
         if 0 <= ry < h and 0 <= rx < w:
             grid[ry][rx] = robot_ch
+            colors[ry][rx] = "bold white on dark_green"
+            # Robot label below.
+            label_row = ry + 1
+            if label_row < h:
+                for i, c in enumerate("▲BOT"):
+                    lc = rx - 1 + i
+                    if 0 <= lc < w and grid[label_row][lc] in (" ", "·", "─"):
+                        grid[label_row][lc] = c
+                        colors[label_row][lc] = "bold white"
 
-        # Draw robot trail (last few positions from pose history aren't in the
-        # JSONL per-tick, but we can at least mark the current position).
-
-        # Render.
+        # Render with Rich markup.
         lines: list[str] = []
-        border = "─" * w
-        lines.append(f"┌{border}┐")
-        for row in grid:
-            lines.append(f"│{''.join(row)}│")
-        lines.append(f"└{border}┘")
-        info = f" pose=({pose[0]:+.2f},{pose[1]:+.2f}) θ={math.degrees(pose[2]):+.0f}°  col={collisions}"
-        lines.append(f"[dim]{info}[/]")
+        for r in range(h):
+            row_str = ""
+            for c in range(w):
+                ch = grid[r][c]
+                clr = colors[r][c]
+                if clr:
+                    row_str += f"[{clr}]{ch}[/]"
+                else:
+                    row_str += f"[dim]{ch}[/]"
+            lines.append(row_str)
+
+        # Info bar.
+        info = (
+            f"[bold]pose[/]=({pose[0]:+.2f},{pose[1]:+.2f}) "
+            f"[bold]θ[/]={math.degrees(pose[2]):+.0f}° "
+            f"[bold]col[/]={self._collisions}"
+        )
+        lines.append(info)
         self.update("\n".join(lines))
 
 
@@ -166,10 +264,10 @@ class HackTUI(App):
         width: 1fr;
     }
     #world-map {
-        height: auto;
-        min-height: 24;
+        height: 1fr;
         border: solid #1f401f;
-        padding: 0 1;
+        padding: 0;
+        overflow: hidden;
     }
     #plan-panel {
         height: 1fr;

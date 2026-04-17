@@ -400,6 +400,7 @@ async def rehearse(
                     break
             elif delay > 0:
                 await asyncio.sleep(delay)
+            _emit_world_state(trace, tick, robot)
             ok, why = _evaluate(scenario, robot, m.tool_calls)
             cur_success = why if ok else f"checking — {why}"
             if ok:
