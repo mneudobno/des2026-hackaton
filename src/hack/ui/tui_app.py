@@ -44,13 +44,31 @@ class StatusBar(Static):
 
 
 class WorldMap(Static):
-    """ASCII top-down view of the virtual world — fills available space."""
+    """Half-block pixel-art top-down view of the virtual world.
+
+    Uses ▀▄█ characters for 2× vertical resolution. Each terminal cell
+    encodes two vertical pixels via foreground + background colors.
+    """
 
     DEFAULT_CSS = """
     WorldMap {
         height: 1fr;
     }
     """
+
+    # Color palette
+    C_BG = (10, 20, 10)
+    C_GRID = (25, 50, 25)
+    C_AXIS = (40, 90, 40)
+    C_OBSTACLE = (200, 50, 50)
+    C_OBSTACLE_ZONE = (80, 25, 25)
+    C_GOAL = (50, 200, 50)
+    C_TARGET = (200, 200, 50)
+    C_OBJECT = (80, 120, 200)
+    C_ROBOT = (255, 255, 255)
+    C_ROBOT_DIR = (100, 255, 100)
+    C_TRAIL = (50, 150, 150)
+    C_TRAIL_OLD = (25, 70, 70)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -68,21 +86,19 @@ class WorldMap(Static):
         self._pose = pose
         self._objects = objects
         self._collisions = collisions
-        # Track robot trail (last 30 positions).
         self._trail.append((pose[0], pose[1]))
-        if len(self._trail) > 30:
-            self._trail = self._trail[-30:]
+        if len(self._trail) > 40:
+            self._trail = self._trail[-40:]
         self._refresh_map()
 
     def _refresh_map(self) -> None:
-        # Use the widget's actual size to fill the panel.
         size = self.size
-        w = max(size.width - 4, 30)  # leave room for borders
-        h = max(size.height - 4, 10)
+        pw = max(size.width - 2, 20)  # pixel width = terminal columns
+        ph = max((size.height - 3) * 2, 10)  # pixel height = 2× terminal rows (half-block)
         pose = self._pose
         objects = self._objects
 
-        # Viewport: fit all points with margin.
+        # Viewport.
         xs = [pose[0]] + [o["x"] for o in objects]
         ys = [pose[1]] + [o["y"] for o in objects]
         for tx, ty in self._trail:
@@ -93,123 +109,122 @@ class WorldMap(Static):
         span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0) * 1.3
         half = span / 2
 
-        def to_cell(x: float, y: float) -> tuple[int, int]:
-            col = int((x - (cx - half)) / span * (w - 1))
-            row = int((1.0 - (y - (cy - half)) / span) * (h - 1))
-            return max(0, min(w - 1, col)), max(0, min(h - 1, row))
+        def to_px(x: float, y: float) -> tuple[int, int]:
+            col = int((x - (cx - half)) / span * (pw - 1))
+            row = int((1.0 - (y - (cy - half)) / span) * (ph - 1))
+            return max(0, min(pw - 1, col)), max(0, min(ph - 1, row))
 
-        # Build grid with background dots for spatial reference.
-        grid: list[list[str]] = [["·" if (r + c) % 6 == 0 else " " for c in range(w)] for r in range(h)]
-        # Color layer (markup per cell: None = default dim, or a style string).
-        colors: list[list[str | None]] = [[None for _ in range(w)] for _ in range(h)]
+        # Pixel buffer: (r, g, b) per pixel.
+        buf: list[list[tuple[int, int, int]]] = [[self.C_BG for _ in range(pw)] for _ in range(ph)]
 
-        # Draw origin crosshair.
-        ox, oy = to_cell(0, 0)
-        if 0 <= oy < h:
-            for c in range(w):
-                if grid[oy][c] == " ":
-                    grid[oy][c] = "─"
-                    colors[oy][c] = "dim green"
-        if 0 <= ox < w:
-            for r in range(h):
-                if grid[r][ox] in (" ", "─"):
-                    grid[r][ox] = "│" if grid[r][ox] == " " else "┼"
-                    colors[r][ox] = "dim green"
+        # Grid dots.
+        for r in range(ph):
+            for c in range(pw):
+                if (r + c) % 8 == 0:
+                    buf[r][c] = self.C_GRID
 
-        # Draw obstacle exclusion zones (dashed circles approximated as ring of dots).
+        # Origin axes.
+        ox, oy = to_px(0, 0)
+        if 0 <= oy < ph:
+            for c in range(pw):
+                buf[oy][c] = self.C_AXIS
+        if 0 <= ox < pw:
+            for r in range(ph):
+                buf[r][ox] = self.C_AXIS
+
+        # Obstacle exclusion zones (filled circles).
         for obj in objects:
             if not obj.get("is_obstacle"):
                 continue
-            radius = obj.get("radius", 0.1) + 0.08  # + robot radius
-            for angle_step in range(16):
-                a = angle_step * 2 * math.pi / 16
-                ex = obj["x"] + radius * math.cos(a)
-                ey = obj["y"] + radius * math.sin(a)
-                ec, er = to_cell(ex, ey)
-                if 0 <= er < h and 0 <= ec < w and grid[er][ec] in (" ", "·"):
-                    grid[er][ec] = "·"
-                    colors[er][ec] = "red"
+            radius = obj.get("radius", 0.1) + 0.08
+            for dy_step in range(-20, 21):
+                for dx_step in range(-20, 21):
+                    ex = obj["x"] + dx_step * span / pw
+                    ey = obj["y"] + dy_step * span / ph
+                    d = math.hypot(ex - obj["x"], ey - obj["y"])
+                    if d <= radius:
+                        ec, er = to_px(ex, ey)
+                        if 0 <= er < ph and 0 <= ec < pw:
+                            if d <= obj.get("radius", 0.1):
+                                buf[er][ec] = self.C_OBSTACLE
+                            else:
+                                buf[er][ec] = self.C_OBSTACLE_ZONE
 
-        # Draw robot trail.
+        # Robot trail.
         for i, (tx, ty) in enumerate(self._trail[:-1]):
-            tc, tr = to_cell(tx, ty)
-            if 0 <= tr < h and 0 <= tc < w and grid[tr][tc] in (" ", "·", "─", "│"):
-                grid[tr][tc] = "·"
-                fade = "dim" if i < len(self._trail) // 2 else ""
-                colors[tr][tc] = f"{fade} cyan".strip()
+            tc, tr = to_px(tx, ty)
+            if 0 <= tr < ph and 0 <= tc < pw:
+                color = self.C_TRAIL if i >= len(self._trail) // 2 else self.C_TRAIL_OLD
+                # Draw a 2px dot for visibility.
+                for dr in range(-1, 2):
+                    for dc in range(-1, 2):
+                        pr, pc = tr + dr, tc + dc
+                        if 0 <= pr < ph and 0 <= pc < pw:
+                            buf[pr][pc] = color
 
-        # Draw objects.
+        # Objects (non-obstacle).
         for obj in objects:
-            col, row = to_cell(obj["x"], obj["y"])
             if obj.get("is_obstacle"):
-                ch, color = "⬤", "bold red"
-            elif obj.get("is_container"):
-                ch, color = "◆", "bold green"
+                continue
+            oc, or_ = to_px(obj["x"], obj["y"])
+            if obj.get("is_container"):
+                color = self.C_GOAL
             elif obj.get("is_target"):
-                ch, color = "■", "bold yellow"
+                color = self.C_TARGET
             else:
-                ch, color = "□", "bold blue"
-            if 0 <= row < h and 0 <= col < w:
-                grid[row][col] = ch
-                colors[row][col] = color
-                # Label above the object.
-                label = obj.get("name", "")[:6]
-                label_row = row - 1
-                if label_row >= 0:
-                    for i, c in enumerate(label):
-                        lc = col - len(label) // 2 + i
-                        if 0 <= lc < w and grid[label_row][lc] in (" ", "·", "─"):
-                            grid[label_row][lc] = c
-                            colors[label_row][lc] = f"dim {color.replace('bold ', '')}"
+                color = self.C_OBJECT
+            # Draw a 3×3 block.
+            for dr in range(-2, 3):
+                for dc in range(-2, 3):
+                    pr, pc = or_ + dr, oc + dc
+                    if 0 <= pr < ph and 0 <= pc < pw:
+                        buf[pr][pc] = color
 
-        # Draw robot direction beam (3 cells ahead showing facing direction).
-        rx, ry = to_cell(pose[0], pose[1])
+        # Robot direction beam.
         theta = pose[2]
-        beam_chars = "·•·"
-        for bi in range(1, 4):
-            bx = pose[0] + bi * 0.06 * span * math.cos(theta)
-            by = pose[1] + bi * 0.06 * span * math.sin(theta)
-            bc, br = to_cell(bx, by)
-            if 0 <= br < h and 0 <= bc < w and grid[br][bc] in (" ", "·", "─", "│"):
-                grid[br][bc] = beam_chars[min(bi - 1, 2)]
-                colors[br][bc] = "bold green"
+        rx, ry = to_px(pose[0], pose[1])
+        for bi in range(1, 8):
+            bx = pose[0] + bi * 0.04 * span * math.cos(theta)
+            by = pose[1] + bi * 0.04 * span * math.sin(theta)
+            bc, br = to_px(bx, by)
+            if 0 <= br < ph and 0 <= bc < pw:
+                buf[br][bc] = self.C_ROBOT_DIR
 
-        # Draw robot (always on top). 16 directions for ~22.5° resolution.
-        # Index 0 = 0 rad (east/right), counter-clockwise.
-        _ARROWS = "→⬈↗⬈↑⬉↖⬉←⬋↙⬋↓⬊↘⬊"
-        # theta=0 → east (index 0), theta=π/2 → north (index 4), etc.
-        idx = int((theta / (2 * math.pi) * 16 + 0.5) % 16)
-        robot_ch = _ARROWS[idx]
-        if 0 <= ry < h and 0 <= rx < w:
-            grid[ry][rx] = robot_ch
-            colors[ry][rx] = "bold white on dark_green"
-            # Robot label below.
-            label_row = ry + 1
-            if label_row < h:
-                for i, c in enumerate("▲BOT"):
-                    lc = rx - 1 + i
-                    if 0 <= lc < w and grid[label_row][lc] in (" ", "·", "─"):
-                        grid[label_row][lc] = c
-                        colors[label_row][lc] = "bold white"
+        # Robot body (5×5 block with direction notch).
+        for dr in range(-2, 3):
+            for dc in range(-2, 3):
+                pr, pc = ry + dr, rx + dc
+                if 0 <= pr < ph and 0 <= pc < pw:
+                    buf[pr][pc] = self.C_ROBOT
+        # Notch in facing direction (makes it look like an arrow).
+        nx = rx + int(3 * math.cos(theta))
+        ny = ry - int(3 * math.sin(theta))
+        if 0 <= ny < ph and 0 <= nx < pw:
+            buf[ny][nx] = self.C_ROBOT_DIR
 
-        # Render with Rich markup.
+        # Encode as half-block characters.
+        # Each output row = 2 pixel rows. Top pixel = foreground (▀), bottom = background.
         lines: list[str] = []
-        for r in range(h):
-            row_str = ""
-            for c in range(w):
-                ch = grid[r][c]
-                clr = colors[r][c]
-                if clr:
-                    row_str += f"[{clr}]{ch}[/]"
+        for row_pair in range(0, ph - 1, 2):
+            line = ""
+            for c in range(pw):
+                top = buf[row_pair][c]
+                bot = buf[row_pair + 1][c] if row_pair + 1 < ph else self.C_BG
+                if top == bot:
+                    line += f"[rgb({top[0]},{top[1]},{top[2]})]█[/]"
                 else:
-                    row_str += f"[dim]{ch}[/]"
-            lines.append(row_str)
+                    line += (
+                        f"[rgb({top[0]},{top[1]},{top[2]}) on "
+                        f"rgb({bot[0]},{bot[1]},{bot[2]})]▀[/]"
+                    )
+            lines.append(line)
 
         # Info bar.
         info = (
             f"[bold]pose[/]=({pose[0]:+.2f},{pose[1]:+.2f}) "
             f"[bold]θ[/]={math.degrees(pose[2]):+.0f}° "
-            f"[bold]col[/]={self._collisions}"
+            f"[bold]col[/]={self._collisions} "
+            f"[dim]trail={len(self._trail)}[/]"
         )
         lines.append(info)
         self.update("\n".join(lines))
@@ -303,10 +318,10 @@ class HackTUI(App):
 
     TITLE = "HACK//AGENT"
     BINDINGS = [
-        Binding("ctrl+c", "quit", "Quit"),
-        Binding("ctrl+r", "restart", "Restart"),
-        Binding("ctrl+o", "cycle_scenario", "Scenario"),
-        Binding("ctrl+k", "kill", "Kill"),
+        Binding("ctrl+c", "quit", "Quit", priority=True),
+        Binding("ctrl+r", "restart", "Restart", priority=True),
+        Binding("ctrl+o", "cycle_scenario", "Scenario", priority=True),
+        Binding("ctrl+k", "kill", "Kill", priority=True),
     ]
 
     SCENARIOS = ["dance", "obstacle-course", "obstacle-hard", "obstacle-wall",

@@ -163,6 +163,7 @@ def _is_return_cue(c: str) -> bool:
     # for compound cues (5+ words go through LLM classification first).
     return_kws = (
         "go to start", "go to stage", "go to origin",
+        "goto start", "goto stage", "goto origin",
         "walk to start", "walk to stage", "walk to origin",
         "move to start", "move to stage", "move to origin",
         "run to start", "run to stage", "run to origin",
