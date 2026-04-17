@@ -206,9 +206,9 @@ class HackTUI(App):
     TITLE = "HACK//AGENT"
     BINDINGS = [
         Binding("ctrl+c", "quit", "Quit"),
-        Binding("ctrl+r", "action_restart", "Restart"),
-        Binding("ctrl+o", "action_cycle_scenario", "Scenario"),
-        Binding("ctrl+k", "action_kill", "Kill"),
+        Binding("ctrl+r", "restart", "Restart"),
+        Binding("ctrl+o", "cycle_scenario", "Scenario"),
+        Binding("ctrl+k", "kill", "Kill"),
     ]
 
     SCENARIOS = ["dance", "obstacle-course", "obstacle-hard", "obstacle-wall",
@@ -451,7 +451,7 @@ class HackTUI(App):
         self._start_rehearsal()
 
     def action_cycle_scenario(self) -> None:
-        """Ctrl+O: cycle through scenarios."""
+        """Ctrl+O: cycle through scenarios (shown in alerts)."""
         try:
             idx = self.SCENARIOS.index(self.scenario)
         except ValueError:
@@ -461,7 +461,7 @@ class HackTUI(App):
         alerts.write(f"[yellow]scenario → {self.scenario}[/] (Ctrl+R to start)")
 
     def action_kill(self) -> None:
-        """Ctrl+K: kill running rehearsal."""
+        """Ctrl+K: kill the running rehearsal."""
         self._kill_rehearsal()
         alerts = self.query_one("#alerts-log", RichLog)
         alerts.write("[red]rehearsal killed[/]")
