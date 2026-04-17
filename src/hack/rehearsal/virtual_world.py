@@ -33,6 +33,9 @@ COLORS: dict[str, tuple[int, int, int]] = {  # BGR
 }
 
 
+ROBOT_RADIUS = 0.08  # approximate robot body radius for collision checks
+
+
 @dataclass
 class WorldObject:
     name: str
@@ -42,6 +45,8 @@ class WorldObject:
     held: bool = False
     is_target: bool = False
     is_container: bool = False
+    is_obstacle: bool = False
+    radius: float = 0.1  # collision radius (circular)
 
 
 @dataclass
@@ -91,12 +96,37 @@ class VirtualWorldRobot(RobotAdapter):
         # Records when move() is clamped by world bounds — analyzer uses this
         # to flag "planner wanted X but world said no".
         self.clamp_events: list[dict] = []
+        # Records collisions with obstacles.
+        self.collision_events: list[dict] = []
 
     # ---- RobotAdapter contract ----
     async def move(self, dx: float, dy: float, dtheta: float) -> None:
         x, y, th = self.pose
         ix = x + dx * math.cos(th) - dy * math.sin(th)
         iy = y + dx * math.sin(th) + dy * math.cos(th)
+        # Obstacle collision detection — clamp to just outside the obstacle.
+        for obj in self.objects.values():
+            if not obj.is_obstacle:
+                continue
+            d = _dist((ix, iy), (obj.x, obj.y))
+            min_clearance = obj.radius + ROBOT_RADIUS
+            if d < min_clearance:
+                self.collision_events.append({
+                    "tick": self.tick,
+                    "obstacle": obj.name,
+                    "intended": [ix, iy],
+                    "obstacle_pos": [obj.x, obj.y],
+                    "distance": d,
+                    "min_clearance": min_clearance,
+                })
+                # Push robot back to just outside the obstacle.
+                if d > 0.001:
+                    scale = min_clearance / d
+                    ix = obj.x + (ix - obj.x) * scale
+                    iy = obj.y + (iy - obj.y) * scale
+                else:
+                    ix, iy = x, y  # don't move at all
+        # World bounds clamp.
         nx = max(-1.0, min(1.0, ix))
         ny = max(-1.0, min(1.0, iy))
         nth = (th + dtheta + math.pi) % (2 * math.pi) - math.pi
@@ -143,6 +173,8 @@ class VirtualWorldRobot(RobotAdapter):
     async def get_state(self) -> RobotState:
         import math as _m
         dist = _m.hypot(self.pose[0], self.pose[1])
+        # Nearby obstacles for the mock VLM / planner.
+        nearby_obstacles = self._nearby_obstacles(max_dist=0.5)
         return RobotState(
             pose=self.pose,
             gripper_closed=self.gripper_closed,
@@ -151,8 +183,46 @@ class VirtualWorldRobot(RobotAdapter):
                 "tick": self.tick,
                 "dist_from_origin": round(dist, 3),
                 "on_stage": dist < 0.3,
+                "nearby_obstacles": nearby_obstacles,
+                "collision_count": len(self.collision_events),
             },
         )
+
+    def _nearby_obstacles(self, max_dist: float = 0.5) -> list[dict]:
+        """Return obstacles within max_dist with relative positions."""
+        result = []
+        x, y, th = self.pose
+        for obj in self.objects.values():
+            if not obj.is_obstacle:
+                continue
+            d = _dist((x, y), (obj.x, obj.y))
+            if d > max_dist:
+                continue
+            # Compute relative position in body frame.
+            dx_w = obj.x - x
+            dy_w = obj.y - y
+            cos_t, sin_t = math.cos(th), math.sin(th)
+            dx_b = dx_w * cos_t + dy_w * sin_t
+            dy_b = -dx_w * sin_t + dy_w * cos_t
+            # Classify position.
+            if dx_b > abs(dy_b) * 0.5:
+                pos = "ahead"
+            elif dx_b < -abs(dy_b) * 0.5:
+                pos = "behind"
+            else:
+                pos = ""
+            if dy_b > 0.05:
+                pos += "-left" if pos else "left"
+            elif dy_b < -0.05:
+                pos += "-right" if pos else "right"
+            result.append({
+                "name": obj.name,
+                "distance": round(d, 3),
+                "position": pos or "nearby",
+                "body_dx": round(dx_b, 3),
+                "body_dy": round(dy_b, 3),
+            })
+        return sorted(result, key=lambda o: o["distance"])
 
     async def emote(self, label: str) -> None:
         self.utterances.append(f"[emote:{label}]")
@@ -209,13 +279,25 @@ class VirtualWorldRobot(RobotAdapter):
         for obj in self.objects.values():
             color = COLORS.get(obj.color, (100, 100, 100))
             px, py = xy_to_px(obj.x, obj.y)
-            half_world = 0.12 if obj.is_container else 0.08
-            r = max(6, int(half_world * scale))
-            if obj.is_container:
+            if obj.is_obstacle:
+                # Obstacles: filled circle + dashed exclusion zone.
+                r_px = max(6, int(obj.radius * scale))
+                cv2.circle(img, (px, py), r_px, color, -1)
+                cv2.circle(img, (px, py), r_px, (20, 20, 20), 1)
+                # Exclusion zone = radius + robot radius.
+                exc_px = max(8, int((obj.radius + ROBOT_RADIUS) * scale))
+                _draw_dashed_circle(img, (px, py), exc_px, (180, 80, 80), thickness=1, gap=5)
+                cv2.putText(img, obj.name, (px - r_px, py - r_px - 6),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1, cv2.LINE_AA)
+            elif obj.is_container:
+                half_world = 0.12
+                r = max(6, int(half_world * scale))
                 cv2.rectangle(img, (px - r, py - r), (px + r, py + r), color, 2)
                 cv2.putText(img, obj.name, (px - r, py - r - 6),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.44, color, 1, cv2.LINE_AA)
             else:
+                half_world = 0.08
+                r = max(6, int(half_world * scale))
                 cv2.rectangle(img, (px - r, py - r), (px + r, py + r), color, -1)
                 cv2.rectangle(img, (px - r, py - r), (px + r, py + r), (20, 20, 20), 1)
 

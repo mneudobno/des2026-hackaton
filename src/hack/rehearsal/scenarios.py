@@ -121,6 +121,48 @@ SCENARIOS: dict[str, Scenario] = {
 }
 
 
+def _obstacle_evaluate(robot: VirtualWorldRobot, tool_calls: Counter) -> tuple[bool, str]:
+    """Score obstacle course: reach goal + zero collisions."""
+    # 1. collisions
+    collisions = len(robot.collision_events)
+    if collisions > 0:
+        return False, f"{collisions} collision(s) with obstacles"
+    # 2. distance to goal
+    sc = robot.scenario
+    goal = robot.objects.get(sc.success_container)
+    if goal is None:
+        return False, "no goal object found"
+    d = math.hypot(robot.pose[0] - goal.x, robot.pose[1] - goal.y)
+    if d > sc.success_radius:
+        return False, f"distance to goal: {d:.2f}m (need <{sc.success_radius}m)"
+    return True, f"reached goal ({d:.2f}m away), zero collisions"
+
+
+SCENARIOS["obstacle-course"] = Scenario(
+    name="obstacle-course",
+    description="Navigate from start to the green goal, avoiding red obstacles.",
+    objects=[
+        WorldObject("obstacle_1", "red", x=0.2, y=0.0, is_obstacle=True, radius=0.12),
+        WorldObject("obstacle_2", "red", x=0.5, y=0.15, is_obstacle=True, radius=0.10),
+        WorldObject("obstacle_3", "red", x=0.35, y=-0.15, is_obstacle=True, radius=0.08),
+        WorldObject("goal", "green", x=0.8, y=0.0, is_container=True),
+    ],
+    cues=[VoiceCue(at_tick=1, text="navigate to the green goal")],
+    max_ticks=60,
+    success_target="goal",
+    success_container="goal",
+    success_radius=0.15,
+    evaluate=_obstacle_evaluate,
+    system_prompt_suffix=(
+        "\n\n=== OBSTACLE COURSE ===\n"
+        "The observation will list obstacles with their positions (ahead/left/right).\n"
+        "If you see an obstacle ahead, the runner will auto-inject an avoidance plan.\n"
+        "Your job: navigate toward the green goal. Use move(dx=0.2) to advance.\n"
+        "Do NOT walk into obstacles. Trust the avoidance system.\n"
+    ),
+)
+
+
 def load(name: str) -> Scenario:
     if name not in SCENARIOS:
         raise KeyError(f"unknown scenario {name!r}; known: {sorted(SCENARIOS)}")

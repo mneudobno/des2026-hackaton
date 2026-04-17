@@ -31,6 +31,7 @@ LLM_ADAPTERS: dict[str, Callable[..., LLMAdapter]] = {
 VLM_ADAPTERS: dict[str, Callable[..., VLMAdapter]] = {
     "ollama": OllamaVLM,
     "gemini": GeminiVLM,
+    # "mock" is registered but needs world_robot kwarg — runner handles this specially.
 }
 
 

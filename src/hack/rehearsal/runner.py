@@ -27,6 +27,12 @@ from hack.agent.plan_memory import (
     validate_call_against_step,
     validate_plan,
 )
+from hack.agent.deterministic_plans import (  # noqa: F401
+    check_obstacle_avoidance,
+    classify_cue_smart,
+    generate_plan,
+    inject_avoidance,
+)
 from hack.agent.planner import OllamaPlanner, PlannerInput
 from hack.agent.tools import ToolBox, ToolCall
 from hack.rehearsal.scenarios import load as load_scenario
@@ -219,7 +225,13 @@ async def rehearse(
         system_prompt=system_prompt,
         max_tool_calls=cfg["agent"].get("max_tool_calls_per_turn", 4),
     )
-    vlm = VLMClient(adapter=_make_vlm(cfg["vlm"], prompt=cfg["agent"]["observation_prompt"]))
+    # Mock VLM: use ground-truth from virtual world (no API call).
+    vlm_provider = cfg["vlm"].get("provider") or cfg["vlm"].get("adapter") or "ollama"
+    if vlm_provider == "mock" and not real_mode:
+        from hack.models.mock_vlm import MockVLM
+        vlm = VLMClient(adapter=MockVLM(world_robot=robot))
+    else:
+        vlm = VLMClient(adapter=_make_vlm(cfg["vlm"], prompt=cfg["agent"]["observation_prompt"]))
 
     m = RehearsalMetrics(scenario=scenario.name, ticks_run=0, success=False, success_reason="not run")
     cue_by_tick = {c.at_tick: c.text for c in scenario.cues}
@@ -237,32 +249,38 @@ async def rehearse(
 
     for tick in range(1, total_ticks + 1):
         robot.tick = tick
-        cue = cue_by_tick.get(tick)
+        scripted_cue = cue_by_tick.get(tick)
         live_text, live_cues_cursor = _drain_live_cues(live_cues_path, live_cues_cursor)
+        # Merge scripted + live cues.
+        new_cue_text = ""
+        if scripted_cue:
+            new_cue_text = scripted_cue
+            trace.log("scripted_cue", tick=tick, text=scripted_cue)
         if live_text:
-            cue = (cue + " | " if cue else "") + live_text
+            new_cue_text = (new_cue_text + " | " if new_cue_text else "") + live_text
             trace.log("live_cue", tick=tick, text=live_text)
+        cue = new_cue_text or None
         if cue:
             transcript.append(cue)
 
-        # --- Cue → plan installation (one-shot decompose per new cue) ---
-        if live_text:
+        # --- Cue → plan installation (scripted OR live) ---
+        if new_cue_text:
             pose = (await (real_robot or robot).get_state()).pose
             # Deterministic path first — no LLM if the cue is computable.
-            from hack.agent.deterministic_plans import classify_cue_smart, generate_plan
-            det_case = await classify_cue_smart(live_text, planner)
+            det_case = await classify_cue_smart(new_cue_text, planner)
             safety = cfg.get("robot", {}).get("safety", {})
             if det_case:
                 calibration = cfg.get("robot", {}).get("calibration")
-                steps = generate_plan(det_case, live_text, pose, safety, calibration)
+                world_objs = {n: o for n, o in robot.objects.items()} if hasattr(robot, "objects") else None
+                steps = generate_plan(det_case, new_cue_text, pose, safety, calibration, world_objects=world_objs)
                 trace.log("alert", tick=tick, code="deterministic-plan",
                           message=f"classified as '{det_case}' — {len(steps)} computed step(s), no LLM")
             else:
-                steps = await decompose(live_text, planner, pose=pose)
+                steps = await decompose(new_cue_text, planner, pose=pose)
             if steps:
                 if not det_case:
                     # Validate LLM-generated plan via a second LLM call.
-                    ok, corrected, reason = await validate_plan(live_text, steps, planner, pose=pose)
+                    ok, corrected, reason = await validate_plan(new_cue_text, steps, planner, pose=pose)
                     if not ok and corrected:
                         trace.log("alert", tick=tick, code="plan-corrected",
                                   message=f"validator corrected plan: {reason}")
@@ -273,16 +291,16 @@ async def rehearse(
                         continue
                 steps = expand_plan_steps(steps, safety)
                 plan_memory = PlanMemory(
-                    cue=live_text, steps=steps,
+                    cue=new_cue_text, steps=steps,
                     origin=(pose[0], pose[1]),
                     meta={"installed_tick": tick},
                 )
-                trace.log("plan_installed", tick=tick, cue=live_text,
+                trace.log("plan_installed", tick=tick, cue=new_cue_text,
                           steps=plan_memory.steps_to_dicts(),
                           origin=list(plan_memory.origin))
             else:
                 trace.log("alert", tick=tick, code="cue-decompose-failed",
-                          message=f"could not decompose cue {live_text!r} — robot stays idle")
+                          message=f"could not decompose cue {new_cue_text!r} — robot stays idle")
 
         # --- Idle rule: no plan, no action ---
         if plan_memory is None or plan_memory.is_done():
@@ -325,8 +343,33 @@ async def rehearse(
 
         # Pre-baked direct-execute path: if the current plan step has a tool, execute it
         # verbatim — no VLM, no planner call. Deterministic for kinematic motion.
+        # EXCEPTION: if vlm is running every_tick (e.g. obstacle-course with mock VLM),
+        # run the VLM observation + obstacle check BEFORE executing the pre-baked step.
+        # This lets the avoidance system interrupt a pre-baked plan when obstacles appear.
         current_step = plan_memory.current() if plan_memory else None
         if current_step is not None and current_step.tool is not None:
+            # Obstacle check before pre-baked execution (if VLM runs every tick).
+            vlm_mode = cfg["vlm"].get("run_mode", "every_tick")
+            if vlm_mode == "every_tick":
+                obs = await vlm.observe(frame)
+                obs_dict = obs.model_dump() if hasattr(obs, "model_dump") else {}
+                state = await (real_robot or robot).get_state()
+                avoidance_steps = check_obstacle_avoidance(
+                    obs_dict, state.pose, cfg.get("robot", {}).get("safety", {}))
+                if avoidance_steps:
+                    trace.log("alert", tick=tick, code="obstacle-detected",
+                              message=f"obstacle ahead during pre-baked plan — injecting {len(avoidance_steps)}-step avoidance")
+                    world_objs = {n: o for n, o in robot.objects.items()} if hasattr(robot, "objects") else None
+                    plan_memory = inject_avoidance(
+                        plan_memory, avoidance_steps,
+                        robot_pose=state.pose if hasattr(state, "pose") else None,
+                        world_objects=world_objs,
+                        safety=cfg.get("robot", {}).get("safety"),
+                    )
+                    trace.log("plan_installed", tick=tick, cue="obstacle-avoidance",
+                              steps=[s.to_dict() for s in plan_memory.steps],
+                              origin=list(plan_memory.origin))
+                    current_step = plan_memory.current()
             # Safety clamp — even pre-baked steps get capped.
             clamped, notes = clamp_call(current_step.tool, cfg.get("robot", {}).get("safety", {}))
             if notes:
@@ -346,7 +389,6 @@ async def rehearse(
                 trace.log("plan_complete", tick=tick, cue=plan_memory.cue)
                 plan_memory = None
             m.ticks_run = tick
-            # Render + pace + continue
             post = _annotate_frame(robot.render_frame(), tick, total_ticks, cue, m.tool_calls,
                                    last_action_label, cur_success, scenario.name)
             cv2.imwrite(str(last_frame_path), post)
@@ -385,6 +427,32 @@ async def rehearse(
             obs = type("O", (), {"model_dump": lambda self: {"scene": "(skipped; plan executing)"}})()
 
         state = await (real_robot or robot).get_state()
+
+        # Obstacle avoidance check — runs after every observation (mock or real VLM).
+        obs_dict = obs.model_dump() if hasattr(obs, "model_dump") else obs.model_dump()
+        avoidance_steps = check_obstacle_avoidance(obs_dict, state.pose, cfg.get("robot", {}).get("safety", {}))
+        if avoidance_steps:
+            trace.log("alert", tick=tick, code="obstacle-detected",
+                      message=f"obstacle ahead — injecting {len(avoidance_steps)}-step avoidance")
+            world_objs = {n: o for n, o in robot.objects.items()} if hasattr(robot, "objects") else None
+            plan_memory = inject_avoidance(
+                plan_memory, avoidance_steps,
+                robot_pose=state.pose if hasattr(state, "pose") else None,
+                world_objects=world_objs,
+                safety=cfg.get("robot", {}).get("safety"),
+            )
+            trace.log("plan_installed", tick=tick, cue="obstacle-avoidance",
+                      steps=[s.to_dict() for s in plan_memory.steps],
+                      origin=list(plan_memory.origin))
+            # Re-enter the pre-baked path on the next tick.
+            m.ticks_run = tick
+            post = _annotate_frame(robot.render_frame(), tick, total_ticks, cue, m.tool_calls,
+                                   last_action_label, cur_success, scenario.name)
+            cv2.imwrite(str(last_frame_path), post)
+            if delay > 0:
+                await asyncio.sleep(delay)
+            continue
+
         # Expose plan_origin to planner via robot_state.extra if a plan is active.
         state_dump = state.model_dump()
         if plan_memory is not None:
