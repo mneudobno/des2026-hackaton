@@ -162,6 +162,42 @@ SCENARIOS["obstacle-course"] = Scenario(
     ),
 )
 
+SCENARIOS["obstacle-hard"] = Scenario(
+    name="obstacle-hard",
+    description="Dense obstacle field — 5 obstacles, narrow gaps, goal behind them.",
+    objects=[
+        WorldObject("obs_1", "red", x=0.15, y=0.0, is_obstacle=True, radius=0.10),
+        WorldObject("obs_2", "red", x=0.3, y=0.12, is_obstacle=True, radius=0.08),
+        WorldObject("obs_3", "red", x=0.3, y=-0.12, is_obstacle=True, radius=0.08),
+        WorldObject("obs_4", "red", x=0.5, y=0.0, is_obstacle=True, radius=0.10),
+        WorldObject("obs_5", "red", x=0.65, y=-0.1, is_obstacle=True, radius=0.06),
+        WorldObject("goal", "green", x=0.85, y=0.0, is_container=True),
+    ],
+    cues=[VoiceCue(at_tick=1, text="navigate to the green goal")],
+    max_ticks=80,
+    success_target="goal",
+    success_container="goal",
+    success_radius=0.15,
+    evaluate=_obstacle_evaluate,
+)
+
+SCENARIOS["obstacle-wall"] = Scenario(
+    name="obstacle-wall",
+    description="Wall of obstacles blocking the direct path — must go around.",
+    objects=[
+        WorldObject("wall_1", "red", x=0.4, y=0.2, is_obstacle=True, radius=0.10),
+        WorldObject("wall_2", "red", x=0.4, y=0.0, is_obstacle=True, radius=0.10),
+        WorldObject("wall_3", "red", x=0.4, y=-0.2, is_obstacle=True, radius=0.10),
+        WorldObject("goal", "green", x=0.8, y=0.0, is_container=True),
+    ],
+    cues=[VoiceCue(at_tick=1, text="navigate to the green goal")],
+    max_ticks=80,
+    success_target="goal",
+    success_container="goal",
+    success_radius=0.15,
+    evaluate=_obstacle_evaluate,
+)
+
 
 def load(name: str) -> Scenario:
     if name not in SCENARIOS:
