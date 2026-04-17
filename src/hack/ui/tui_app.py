@@ -208,6 +208,7 @@ class HackTUI(App):
         Binding("ctrl+r", "restart", "Restart", priority=True),
         Binding("ctrl+o", "cycle_scenario", "Scenario", priority=True),
         Binding("ctrl+k", "kill", "Kill", priority=True),
+        Binding("ctrl+m", "mic", "Mic", priority=True),
     ]
 
     SCENARIOS = ["dance", "obstacle-course", "obstacle-hard", "obstacle-wall",
@@ -458,6 +459,81 @@ class HackTUI(App):
         alerts = self.query_one("#alerts-log", RichLog)
         alerts.write(f"[yellow]scenario → {self.scenario}[/] (Ctrl+R to start)")
 
+    def action_mic(self) -> None:
+        """Ctrl+M: record from mic, transcribe with Whisper, send as cue."""
+        if hasattr(self, "_mic_recording") and self._mic_recording:
+            return  # already recording
+        self._mic_recording = True
+        alerts = self.query_one("#alerts-log", RichLog)
+        alerts.write("[bold yellow]🎤 listening… (3s)[/]")
+        self._do_mic_record()
+
+    @work(thread=True)
+    def _do_mic_record(self) -> None:
+        """Record audio in a thread, transcribe, send cue."""
+        import numpy as np
+
+        try:
+            import sounddevice as sd
+        except ImportError:
+            self.call_from_thread(self._log_alert, "sounddevice not installed — run: uv pip install sounddevice")
+            self._mic_recording = False
+            return
+
+        sr = 16000
+        duration = 3.0  # seconds
+
+        try:
+            audio = sd.rec(int(duration * sr), samplerate=sr, channels=1, dtype="float32")
+            sd.wait()
+            audio = np.squeeze(audio)
+            rms = float(np.sqrt(np.mean(audio**2)))
+            if rms < 0.005:
+                self.call_from_thread(self._mic_result, "(silence — no speech detected)")
+                self._mic_recording = False
+                return
+        except Exception as e:
+            self.call_from_thread(self._log_alert, f"mic error: {e}")
+            self._mic_recording = False
+            return
+
+        # Transcribe with faster-whisper.
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError:
+            self.call_from_thread(self._log_alert, "faster-whisper not installed — run: uv pip install 'hack[audio]'")
+            self._mic_recording = False
+            return
+
+        try:
+            if not hasattr(self, "_whisper_model"):
+                self.call_from_thread(self._log_alert, "loading Whisper model (first time)…")
+                self._whisper_model = WhisperModel("small", device="auto", compute_type="auto")
+            segments, _ = self._whisper_model.transcribe(audio, language="en")
+            text = " ".join(s.text.strip() for s in segments).strip()
+        except Exception as e:
+            self.call_from_thread(self._log_alert, f"whisper error: {e}")
+            self._mic_recording = False
+            return
+
+        self.call_from_thread(self._mic_result, text)
+        self._mic_recording = False
+
+    def _mic_result(self, text: str) -> None:
+        """Handle transcribed text from mic."""
+        voice = self.query_one("#voice-log", RichLog)
+        alerts = self.query_one("#alerts-log", RichLog)
+
+        if not text or text.startswith("("):
+            alerts.write(f"[dim]🎤 {text}[/]")
+            return
+
+        voice.write(f"[bold yellow]🎤 YOU:[/] {text}")
+        # Send as cue.
+        self.cues_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.cues_path.open("a") as f:
+            f.write(json.dumps({"ts": time.time(), "text": text}) + "\n")
+
     def action_kill(self) -> None:
         """Ctrl+K: kill the running rehearsal."""
         self._kill_rehearsal()
@@ -468,7 +544,7 @@ class HackTUI(App):
 def _fmt(name: str, args: dict) -> str:
     if name == "move":
         parts = []
-        dx, dy, dt = args.get("dx", 0), args.get("dy", 0), args.get("dtheta", 0)
+        dx, dy, dt = float(args.get("dx") or 0), float(args.get("dy") or 0), float(args.get("dtheta") or 0)
         if dx:
             parts.append(f"{'fwd' if dx > 0 else 'back'} {abs(dx):.2f}m")
         if dy:
