@@ -919,17 +919,22 @@ def sensors_mic(transcribe: bool = False, seconds: float = 5.0) -> None:
 def tui(
     trace: Path = typer.Argument(None, help="JSONL trace to tail. Default: latest in runs/."),
     no_follow: bool = typer.Option(False, "--no-follow", help="Read the whole file then exit (replay mode)."),
+    scenario: str = typer.Option("dance", "--scenario", help="Default scenario for Ctrl+R restart."),
+    config: str = typer.Option("configs/agent.yaml", "--config", help="Default config for Ctrl+R restart."),
 ) -> None:
-    """Full-screen terminal dashboard with command input — no browser needed.
+    """Full-screen terminal dashboard with command input and rehearsal controls.
 
-    Shows: model status, plan decomposition, actions, voice commands, alerts, pose.
-    Type a command at the bottom and press Enter to send it to the robot.
-    Works over SSH, in Kitty, iTerm, VS Code terminal.
-    Press Ctrl+C to quit.
+    Type a command at the bottom → sends to robot. Keyboard shortcuts:
+      Ctrl+R  restart rehearsal (current scenario)
+      Ctrl+O  cycle scenario (dance → obstacle-course → …)
+      Ctrl+K  kill running rehearsal
+      Ctrl+C  quit
+
+    World map shows robot (arrow), obstacles (●), goal (◆) in real-time.
     """
     from hack.ui.tui_app import run_textual_tui
 
-    run_textual_tui(trace_path=trace, follow=not no_follow)
+    run_textual_tui(trace_path=trace, follow=not no_follow, scenario=scenario, config=config)
 
 
 # ---------- ui (web) ----------

@@ -317,6 +317,7 @@ async def rehearse(
                     break
             elif delay > 0:
                 await asyncio.sleep(delay)
+            _emit_world_state(trace, tick, robot)
             trace.log("idle", tick=tick)
             m.ticks_run = tick
             continue
@@ -549,6 +550,7 @@ async def rehearse(
                         trace.log("plan_complete", tick=tick, cue=plan_memory.cue)
                         plan_memory = None
 
+        _emit_world_state(trace, tick, robot)
         m.ticks_run = tick
         # Render again after actions so the post-tick state is what's shown + saved.
         post = _annotate_frame(robot.render_frame(), tick, total_ticks, cue, m.tool_calls,
@@ -635,6 +637,22 @@ def _compute_hints(scenario_name: str, state, tool_calls) -> list[str]:
         if emote_labels >= 2:
             hints.append("You have used emotes. Vary the LABEL (spin/wave/bow/pose/sway).")
     return hints
+
+
+def _emit_world_state(trace: JsonlLogger, tick: int, robot: VirtualWorldRobot) -> None:
+    """Emit a world_state event with robot pose + all object positions for the TUI map."""
+    objects = []
+    for name, obj in robot.objects.items():
+        objects.append({
+            "name": name, "x": round(obj.x, 3), "y": round(obj.y, 3),
+            "color": obj.color, "is_obstacle": obj.is_obstacle,
+            "is_container": obj.is_container, "is_target": obj.is_target,
+            "radius": obj.radius if obj.is_obstacle else 0,
+        })
+    trace.log("world_state", tick=tick,
+              pose=list(robot.pose),
+              objects=objects,
+              collisions=len(robot.collision_events))
 
 
 def _drain_live_cues(path: Path, cursor: int) -> tuple[str, int]:

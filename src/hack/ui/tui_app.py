@@ -43,6 +43,80 @@ class StatusBar(Static):
         )
 
 
+class WorldMap(Static):
+    """ASCII top-down view of the virtual world."""
+
+    MAP_W = 50
+    MAP_H = 20
+
+    def render_world(
+        self,
+        pose: tuple[float, float, float],
+        objects: list[dict],
+        collisions: int = 0,
+    ) -> None:
+        w, h = self.MAP_W, self.MAP_H
+        # Collect all points to compute viewport.
+        xs = [pose[0]] + [o["x"] for o in objects]
+        ys = [pose[1]] + [o["y"] for o in objects]
+        cx = 0.5 * (min(xs) + max(xs))
+        cy = 0.5 * (min(ys) + max(ys))
+        span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0) * 1.3
+        half = span / 2
+
+        def to_cell(x: float, y: float) -> tuple[int, int]:
+            col = int((x - (cx - half)) / span * (w - 1))
+            row = int((1.0 - (y - (cy - half)) / span) * (h - 1))
+            return max(0, min(w - 1, col)), max(0, min(h - 1, row))
+
+        # Build grid.
+        grid: list[list[str]] = [[" " for _ in range(w)] for _ in range(h)]
+
+        # Draw objects.
+        for obj in objects:
+            col, row = to_cell(obj["x"], obj["y"])
+            if obj.get("is_obstacle"):
+                ch = "●"
+            elif obj.get("is_container"):
+                ch = "◆"
+            elif obj.get("is_target"):
+                ch = "■"
+            else:
+                ch = "□"
+            if 0 <= row < h and 0 <= col < w:
+                grid[row][col] = ch
+                # Label (first 3 chars of name, placed right of symbol).
+                label = obj.get("name", "")[:4]
+                for i, c in enumerate(label):
+                    lc = col + 1 + i
+                    if 0 <= lc < w:
+                        grid[row][lc] = c
+
+        # Draw robot.
+        rx, ry = to_cell(pose[0], pose[1])
+        # Direction arrow based on theta.
+        theta = pose[2]
+        arrows = "→↗↑↖←↙↓↘→"
+        idx = int(((theta + math.pi) / (2 * math.pi) * 8 + 2) % 8)
+        robot_ch = arrows[idx]
+        if 0 <= ry < h and 0 <= rx < w:
+            grid[ry][rx] = robot_ch
+
+        # Draw robot trail (last few positions from pose history aren't in the
+        # JSONL per-tick, but we can at least mark the current position).
+
+        # Render.
+        lines: list[str] = []
+        border = "─" * w
+        lines.append(f"┌{border}┐")
+        for row in grid:
+            lines.append(f"│{''.join(row)}│")
+        lines.append(f"└{border}┘")
+        info = f" pose=({pose[0]:+.2f},{pose[1]:+.2f}) θ={math.degrees(pose[2]):+.0f}°  col={collisions}"
+        lines.append(f"[dim]{info}[/]")
+        self.update("\n".join(lines))
+
+
 class PlanPanel(Static):
     def set_plan(self, cue: str, steps: list[dict], idx: int) -> None:
         lines = [f"[bold yellow]▶ {cue}[/]", ""]
@@ -91,6 +165,12 @@ class HackTUI(App):
     #right-col {
         width: 1fr;
     }
+    #world-map {
+        height: auto;
+        min-height: 24;
+        border: solid #1f401f;
+        padding: 0 1;
+    }
     #plan-panel {
         height: 1fr;
         border: solid #1f401f;
@@ -126,19 +206,29 @@ class HackTUI(App):
     TITLE = "HACK//AGENT"
     BINDINGS = [
         Binding("ctrl+c", "quit", "Quit"),
-        Binding("ctrl+r", "restart", "Restart rehearsal"),
+        Binding("ctrl+r", "action_restart", "Restart"),
+        Binding("ctrl+o", "action_cycle_scenario", "Scenario"),
+        Binding("ctrl+k", "action_kill", "Kill"),
     ]
+
+    SCENARIOS = ["dance", "obstacle-course", "obstacle-hard", "obstacle-wall",
+                 "pick-and-place", "follow", "chit-chat"]
 
     def __init__(
         self,
         trace_path: Path | None = None,
         follow: bool = True,
         cues_path: Path = Path("runs/live_cues.ndjson"),
+        scenario: str = "dance",
+        config: str = "configs/agent.yaml",
     ) -> None:
         super().__init__()
         self.trace_path = trace_path
         self.follow = follow
         self.cues_path = cues_path
+        self.scenario = scenario
+        self.config = config
+        self._rehearsal_proc: Any = None
         # State
         self._plan_cue = ""
         self._plan_steps: list[dict] = []
@@ -159,6 +249,7 @@ class HackTUI(App):
         yield StatusBar(id="status-bar")
         with Horizontal(id="main"):
             with Vertical(id="left-col"):
+                yield WorldMap("[dim]— awaiting world data —[/]", id="world-map")
                 yield PlanPanel("[dim]— no active plan —[/]", id="plan-panel")
             with Vertical(id="right-col"):
                 yield RichLog(highlight=True, markup=True, id="actions-log")
@@ -172,6 +263,7 @@ class HackTUI(App):
         self.query_one("#voice-log", RichLog).border_title = "VOICE"
         self.query_one("#alerts-log", RichLog).border_title = "ALERTS"
         self.query_one("#plan-panel", PlanPanel).border_title = "PLAN"
+        self.query_one("#world-map", WorldMap).border_title = "WORLD"
         self._start_tail()
 
     @on(Input.Submitted, "#cmd-input")
@@ -286,6 +378,12 @@ class HackTUI(App):
                 return  # info, not error
             msg = e.get("message", "")
             alerts.write(f"[bold red]t{tick}[/] {code}: {msg[:80]}")
+        elif kind == "world_state":
+            world_map = self.query_one("#world-map", WorldMap)
+            pose = tuple(e.get("pose", [0, 0, 0]))
+            objects = e.get("objects", [])
+            cols = e.get("collisions", 0)
+            world_map.render_world(pose, objects, cols)
         elif kind == "observation":
             state_data = e.get("state", {}) if "state" in e else {}
             pose = state_data.get("pose")
@@ -312,6 +410,62 @@ class HackTUI(App):
     def _log_alert(self, msg: str) -> None:
         self.query_one("#alerts-log", RichLog).write(f"[red]{msg}[/]")
 
+    def _kill_rehearsal(self) -> None:
+        if self._rehearsal_proc and self._rehearsal_proc.poll() is None:
+            self._rehearsal_proc.terminate()
+            self._rehearsal_proc = None
+
+    def _start_rehearsal(self) -> None:
+        import subprocess
+        self._kill_rehearsal()
+        # Clear cues + issues.
+        cues = Path("runs/live_cues.ndjson")
+        cues.parent.mkdir(parents=True, exist_ok=True)
+        cues.write_text("")
+        Path("runs/issues.ndjson").write_text("")
+        # Determine config: obstacle scenarios use obstacle config, others use default.
+        cfg = self.config
+        if "obstacle" in self.scenario and Path("configs/agent.obstacle.yaml").exists():
+            cfg = "configs/agent.obstacle.yaml"
+        cmd = [
+            "uv", "run", "hack", "rehearse",
+            "--scenario", self.scenario,
+            "--config", cfg,
+            "--delay", "0.5",
+            "--ticks", "200",
+            "--no-display",
+        ]
+        self._rehearsal_proc = subprocess.Popen(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        alerts = self.query_one("#alerts-log", RichLog)
+        alerts.write(f"[bold green]▶ started[/] {self.scenario} (pid {self._rehearsal_proc.pid})")
+        self.sub_title = f"{self.scenario} — starting…"
+        # Give it a moment then re-tail the new trace.
+        import time as _t
+        _t.sleep(1)
+        self._start_tail()
+
+    def action_restart(self) -> None:
+        """Ctrl+R: restart rehearsal with current scenario."""
+        self._start_rehearsal()
+
+    def action_cycle_scenario(self) -> None:
+        """Ctrl+O: cycle through scenarios."""
+        try:
+            idx = self.SCENARIOS.index(self.scenario)
+        except ValueError:
+            idx = -1
+        self.scenario = self.SCENARIOS[(idx + 1) % len(self.SCENARIOS)]
+        alerts = self.query_one("#alerts-log", RichLog)
+        alerts.write(f"[yellow]scenario → {self.scenario}[/] (Ctrl+R to start)")
+
+    def action_kill(self) -> None:
+        """Ctrl+K: kill running rehearsal."""
+        self._kill_rehearsal()
+        alerts = self.query_one("#alerts-log", RichLog)
+        alerts.write("[red]rehearsal killed[/]")
+
 
 def _fmt(name: str, args: dict) -> str:
     if name == "move":
@@ -335,6 +489,11 @@ def run_textual_tui(
     trace_path: Path | None = None,
     follow: bool = True,
     cues_path: Path = Path("runs/live_cues.ndjson"),
+    scenario: str = "dance",
+    config: str = "configs/agent.yaml",
 ) -> None:
-    app = HackTUI(trace_path=trace_path, follow=follow, cues_path=cues_path)
+    app = HackTUI(
+        trace_path=trace_path, follow=follow, cues_path=cues_path,
+        scenario=scenario, config=config,
+    )
     app.run()
