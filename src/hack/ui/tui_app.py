@@ -170,12 +170,6 @@ class HackTUI(App):
     #right-col {
         width: 1fr;
     }
-    #world-map {
-        height: 1fr;
-        border: solid #1f401f;
-        padding: 0;
-        overflow: hidden;
-    }
     #plan-panel {
         height: 1fr;
         border: solid #1f401f;
@@ -254,7 +248,6 @@ class HackTUI(App):
         yield StatusBar(id="status-bar")
         with Horizontal(id="main"):
             with Vertical(id="left-col"):
-                yield WorldMap("[dim]— awaiting world data —[/]", id="world-map")
                 yield PlanPanel("[dim]— no active plan —[/]", id="plan-panel")
             with Vertical(id="right-col"):
                 yield RichLog(highlight=True, markup=True, id="actions-log")
@@ -268,7 +261,6 @@ class HackTUI(App):
         self.query_one("#voice-log", RichLog).border_title = "VOICE"
         self.query_one("#alerts-log", RichLog).border_title = "ALERTS"
         self.query_one("#plan-panel", PlanPanel).border_title = "PLAN"
-        self.query_one("#world-map", WorldMap).border_title = "WORLD"
         self._start_tail()
 
     @on(Input.Submitted, "#cmd-input")
@@ -384,11 +376,12 @@ class HackTUI(App):
             msg = e.get("message", "")
             alerts.write(f"[bold red]t{tick}[/] {code}: {msg[:80]}")
         elif kind == "world_state":
-            world_map = self.query_one("#world-map", WorldMap)
-            pose = tuple(e.get("pose", [0, 0, 0]))
-            objects = e.get("objects", [])
-            cols = e.get("collisions", 0)
-            world_map.render_world(pose, objects, cols)
+            # World rendering is handled by the OpenCV --display window.
+            # Just extract pose/collision data for the status bar.
+            pose = e.get("pose")
+            if pose:
+                self._pose = tuple(pose)
+            self._collisions = e.get("collisions", self._collisions)
         elif kind == "observation":
             state_data = e.get("state", {}) if "state" in e else {}
             pose = state_data.get("pose")
