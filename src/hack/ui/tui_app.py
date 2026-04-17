@@ -438,13 +438,13 @@ class HackTUI(App):
             "--config", cfg,
             "--delay", "0.5",
             "--ticks", "200",
-            "--no-display",
+            "--display",
         ]
         self._rehearsal_proc = subprocess.Popen(
             cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         alerts = self.query_one("#alerts-log", RichLog)
-        alerts.write(f"[bold green]▶ started[/] {self.scenario} (pid {self._rehearsal_proc.pid})")
+        alerts.write(f"[bold green]▶ started[/] {self.scenario} + OpenCV window (pid {self._rehearsal_proc.pid})")
         self.sub_title = f"{self.scenario} — starting…"
         # Give it a moment then re-tail the new trace.
         import time as _t

@@ -938,44 +938,41 @@ def tui(
     run_textual_tui(trace_path=trace, follow=not no_follow, scenario=scenario, config=config)
 
 
-# ---------- world (Kitty image viewer) ----------
+# ---------- world (live world viewer) ----------
 @app.command("world")
 def world(
-    interval: float = typer.Option(0.3, help="Refresh interval in seconds."),
+    interval: float = typer.Option(0.1, help="Refresh interval in seconds."),
     frame: Path = typer.Option(Path("runs/last_frame.jpg"), help="Frame path to display."),
 ) -> None:
-    """Live world view using Kitty's icat — pixel-perfect, auto-refreshing.
+    """Live world view — smooth OpenCV window showing the virtual world.
 
-    Run in a separate Kitty pane alongside `hack tui`. Shows the full-resolution
-    OpenCV frame from the rehearsal runner, updated every --interval seconds.
-    Press Ctrl+C to stop.
+    Run alongside `hack tui` in a separate pane/window. Shows the same
+    annotated frame the rehearsal runner writes, updated in real-time.
+    Press 'q' in the window or Ctrl+C to stop.
     """
-    import time as _time
 
-    if not shutil.which("kitten"):
-        console.print("[red]kitten not found — this command requires Kitty terminal[/]")
-        console.print("[dim]alternative: watch -n 0.5 kitten icat --clear runs/last_frame.jpg[/]")
-        raise typer.Exit(1)
+    import cv2
 
-    console.print(f"[dim]watching {frame} every {interval}s — Ctrl+C to stop[/]")
+    console.print(f"[dim]watching {frame} every {interval}s — press 'q' in the window to stop[/]")
+    cv2.namedWindow("hack world", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("hack world", 800, 800)
+    last_mtime = 0.0
     try:
         while True:
             if frame.exists():
-                # Get terminal size in columns and use it to scale the image.
-                try:
-                    cols = os.get_terminal_size().columns
-                except OSError:
-                    cols = 80
-                subprocess.run(
-                    ["kitten", "icat", "--clear", "--align", "left",
-                     "--place", f"{cols}x{cols}@0x0",
-                     str(frame)],
-                    check=False,
-                )
-            _time.sleep(interval)
+                mtime = frame.stat().st_mtime
+                if mtime != last_mtime:
+                    img = cv2.imread(str(frame))
+                    if img is not None:
+                        cv2.imshow("hack world", img)
+                        last_mtime = mtime
+            key = cv2.waitKey(max(1, int(interval * 1000)))
+            if key & 0xFF == ord("q"):
+                break
     except KeyboardInterrupt:
-        # Clear the image on exit.
-        subprocess.run(["kitten", "icat", "--clear"], check=False)
+        pass
+    finally:
+        cv2.destroyAllWindows()
 
 
 # ---------- ui (web) ----------
@@ -1005,7 +1002,6 @@ def demo_play(trace: Path) -> None:
     """Replay a trace through the dashboard for judges."""
     console.print(f"streaming {trace} to dashboard at http://127.0.0.1:8000/replay")
     import uvicorn
-    import os
     os.environ["HACK_REPLAY_TRACE"] = str(trace)
     uvicorn.run("hack.ui.app:app", host="127.0.0.1", port=8000, reload=False)
 
