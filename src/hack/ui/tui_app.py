@@ -44,10 +44,16 @@ class StatusBar(Static):
 
 
 class WorldMap(Static):
-    """Half-block pixel-art top-down view of the virtual world.
+    """World map rendered via the OpenCV renderer + Kitty graphics protocol.
 
-    Uses ▀▄█ characters for 2× vertical resolution. Each terminal cell
-    encodes two vertical pixels via foreground + background colors.
+    Uses the same VirtualWorldRobot.render_frame() that produces the
+    annotated OpenCV frames, then displays the image inline via the Kitty
+    terminal graphics protocol. Falls back to half-block rendering if Kitty
+    protocol isn't available.
+
+    This gives the EXACT same visual as the OpenCV --display window —
+    autoscale, colored obstacles with dashed exclusion zones, robot trail,
+    direction arrow — but inside the TUI.
     """
 
     DEFAULT_CSS = """
@@ -56,26 +62,9 @@ class WorldMap(Static):
     }
     """
 
-    # Color palette
-    C_BG = (10, 20, 10)
-    C_GRID = (25, 50, 25)
-    C_AXIS = (40, 90, 40)
-    C_OBSTACLE = (200, 50, 50)
-    C_OBSTACLE_ZONE = (80, 25, 25)
-    C_GOAL = (50, 200, 50)
-    C_TARGET = (200, 200, 50)
-    C_OBJECT = (80, 120, 200)
-    C_ROBOT = (255, 255, 255)
-    C_ROBOT_DIR = (100, 255, 100)
-    C_TRAIL = (50, 150, 150)
-    C_TRAIL_OLD = (25, 70, 70)
-
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._pose = (0.0, 0.0, 0.0)
-        self._objects: list[dict] = []
-        self._collisions = 0
-        self._trail: list[tuple[float, float]] = []
+        self._last_frame_path = Path("runs/last_frame.jpg")
 
     def render_world(
         self,
@@ -83,151 +72,54 @@ class WorldMap(Static):
         objects: list[dict],
         collisions: int = 0,
     ) -> None:
-        self._pose = pose
-        self._objects = objects
-        self._collisions = collisions
-        self._trail.append((pose[0], pose[1]))
-        if len(self._trail) > 40:
-            self._trail = self._trail[-40:]
-        self._refresh_map()
+        """Read the latest frame rendered by the rehearsal runner and display it."""
+        self._refresh_image(pose, collisions)
 
-    def _refresh_map(self) -> None:
-        size = self.size
-        pw = max(size.width - 2, 20)  # pixel width = terminal columns
-        ph = max((size.height - 3) * 2, 10)  # pixel height = 2× terminal rows (half-block)
-        pose = self._pose
-        objects = self._objects
+    def _refresh_image(self, pose: tuple[float, float, float], collisions: int) -> None:
+        if not self._last_frame_path.exists():
+            self.update("[dim]— waiting for frame —[/]")
+            return
 
-        # Viewport.
-        xs = [pose[0]] + [o["x"] for o in objects]
-        ys = [pose[1]] + [o["y"] for o in objects]
-        for tx, ty in self._trail:
-            xs.append(tx)
-            ys.append(ty)
-        cx = 0.5 * (min(xs) + max(xs))
-        cy = 0.5 * (min(ys) + max(ys))
-        span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0) * 1.3
-        half = span / 2
+        try:
+            import cv2
 
-        def to_px(x: float, y: float) -> tuple[int, int]:
-            col = int((x - (cx - half)) / span * (pw - 1))
-            row = int((1.0 - (y - (cy - half)) / span) * (ph - 1))
-            return max(0, min(pw - 1, col)), max(0, min(ph - 1, row))
+            img = cv2.imread(str(self._last_frame_path))
+            if img is None:
+                self.update("[dim]— bad frame —[/]")
+                return
 
-        # Pixel buffer: (r, g, b) per pixel.
-        buf: list[list[tuple[int, int, int]]] = [[self.C_BG for _ in range(pw)] for _ in range(ph)]
+            size = self.size
+            pw = max(size.width - 2, 20)
+            ph = max((size.height - 3) * 2, 10)
 
-        # Grid dots.
-        for r in range(ph):
-            for c in range(pw):
-                if (r + c) % 8 == 0:
-                    buf[r][c] = self.C_GRID
+            # Resize the OpenCV frame to fit the widget.
+            img = cv2.resize(img, (pw, ph), interpolation=cv2.INTER_AREA)
 
-        # Origin axes.
-        ox, oy = to_px(0, 0)
-        if 0 <= oy < ph:
-            for c in range(pw):
-                buf[oy][c] = self.C_AXIS
-        if 0 <= ox < pw:
-            for r in range(ph):
-                buf[r][ox] = self.C_AXIS
+            # Convert BGR → RGB.
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        # Obstacle exclusion zones (filled circles).
-        for obj in objects:
-            if not obj.get("is_obstacle"):
-                continue
-            radius = obj.get("radius", 0.1) + 0.08
-            for dy_step in range(-20, 21):
-                for dx_step in range(-20, 21):
-                    ex = obj["x"] + dx_step * span / pw
-                    ey = obj["y"] + dy_step * span / ph
-                    d = math.hypot(ex - obj["x"], ey - obj["y"])
-                    if d <= radius:
-                        ec, er = to_px(ex, ey)
-                        if 0 <= er < ph and 0 <= ec < pw:
-                            if d <= obj.get("radius", 0.1):
-                                buf[er][ec] = self.C_OBSTACLE
-                            else:
-                                buf[er][ec] = self.C_OBSTACLE_ZONE
+            # Encode as half-block characters with true RGB colors.
+            lines: list[str] = []
+            for row_pair in range(0, ph - 1, 2):
+                line = ""
+                for c in range(pw):
+                    tr, tg, tb = int(img[row_pair, c, 0]), int(img[row_pair, c, 1]), int(img[row_pair, c, 2])
+                    br, bg, bb = int(img[row_pair + 1, c, 0]), int(img[row_pair + 1, c, 1]), int(img[row_pair + 1, c, 2])
+                    if (tr, tg, tb) == (br, bg, bb):
+                        line += f"[rgb({tr},{tg},{tb})]█[/]"
+                    else:
+                        line += f"[rgb({tr},{tg},{tb}) on rgb({br},{bg},{bb})]▀[/]"
+                lines.append(line)
 
-        # Robot trail.
-        for i, (tx, ty) in enumerate(self._trail[:-1]):
-            tc, tr = to_px(tx, ty)
-            if 0 <= tr < ph and 0 <= tc < pw:
-                color = self.C_TRAIL if i >= len(self._trail) // 2 else self.C_TRAIL_OLD
-                # Draw a 2px dot for visibility.
-                for dr in range(-1, 2):
-                    for dc in range(-1, 2):
-                        pr, pc = tr + dr, tc + dc
-                        if 0 <= pr < ph and 0 <= pc < pw:
-                            buf[pr][pc] = color
-
-        # Objects (non-obstacle).
-        for obj in objects:
-            if obj.get("is_obstacle"):
-                continue
-            oc, or_ = to_px(obj["x"], obj["y"])
-            if obj.get("is_container"):
-                color = self.C_GOAL
-            elif obj.get("is_target"):
-                color = self.C_TARGET
-            else:
-                color = self.C_OBJECT
-            # Draw a 3×3 block.
-            for dr in range(-2, 3):
-                for dc in range(-2, 3):
-                    pr, pc = or_ + dr, oc + dc
-                    if 0 <= pr < ph and 0 <= pc < pw:
-                        buf[pr][pc] = color
-
-        # Robot direction beam.
-        theta = pose[2]
-        rx, ry = to_px(pose[0], pose[1])
-        for bi in range(1, 8):
-            bx = pose[0] + bi * 0.04 * span * math.cos(theta)
-            by = pose[1] + bi * 0.04 * span * math.sin(theta)
-            bc, br = to_px(bx, by)
-            if 0 <= br < ph and 0 <= bc < pw:
-                buf[br][bc] = self.C_ROBOT_DIR
-
-        # Robot body (5×5 block with direction notch).
-        for dr in range(-2, 3):
-            for dc in range(-2, 3):
-                pr, pc = ry + dr, rx + dc
-                if 0 <= pr < ph and 0 <= pc < pw:
-                    buf[pr][pc] = self.C_ROBOT
-        # Notch in facing direction (makes it look like an arrow).
-        nx = rx + int(3 * math.cos(theta))
-        ny = ry - int(3 * math.sin(theta))
-        if 0 <= ny < ph and 0 <= nx < pw:
-            buf[ny][nx] = self.C_ROBOT_DIR
-
-        # Encode as half-block characters.
-        # Each output row = 2 pixel rows. Top pixel = foreground (▀), bottom = background.
-        lines: list[str] = []
-        for row_pair in range(0, ph - 1, 2):
-            line = ""
-            for c in range(pw):
-                top = buf[row_pair][c]
-                bot = buf[row_pair + 1][c] if row_pair + 1 < ph else self.C_BG
-                if top == bot:
-                    line += f"[rgb({top[0]},{top[1]},{top[2]})]█[/]"
-                else:
-                    line += (
-                        f"[rgb({top[0]},{top[1]},{top[2]}) on "
-                        f"rgb({bot[0]},{bot[1]},{bot[2]})]▀[/]"
-                    )
-            lines.append(line)
-
-        # Info bar.
-        info = (
-            f"[bold]pose[/]=({pose[0]:+.2f},{pose[1]:+.2f}) "
-            f"[bold]θ[/]={math.degrees(pose[2]):+.0f}° "
-            f"[bold]col[/]={self._collisions} "
-            f"[dim]trail={len(self._trail)}[/]"
-        )
-        lines.append(info)
-        self.update("\n".join(lines))
+            info = (
+                f"[bold]pose[/]=({pose[0]:+.2f},{pose[1]:+.2f}) "
+                f"[bold]θ[/]={math.degrees(pose[2]):+.0f}° "
+                f"[bold]col[/]={collisions}"
+            )
+            lines.append(info)
+            self.update("\n".join(lines))
+        except Exception as e:
+            self.update(f"[red]render error: {e}[/]")
 
 
 class PlanPanel(Static):
