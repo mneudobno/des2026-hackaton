@@ -14,3 +14,4 @@ runs/
 .claude/scheduled_tasks.lock
 .claude/.cache/
 configs/agent.local.yaml
+.playwright-mcp/

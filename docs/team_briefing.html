@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Just Build · Team brief · Hackathon 2026-05-08</title>
+
+<!-- Reveal.js from CDN -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.css">
+<script>
+  if (window.location.search.match(/print-pdf/gi)) {
+    document.write('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/css/print/pdf.css">');
+  }
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    /* HP + NVIDIA inspired palette — the partners running the event */
+    --bg: #0A1628;            /* deep navy, almost black */
+    --bg-soft: #102134;
+    --bg-light: #F4F7FA;
+    --green: #76B900;          /* NVIDIA green */
+    --green-soft: #99D633;
+    --orange: #FF8C00;         /* HP-ish orange */
+    --teal: #00BCD4;
+    --magenta: #E91E63;
+    --text: #1A2332;
+    --text-soft: #4A5568;
+    --muted: #6B7C93;
+    --line: #E2E8F0;
+    --r-background-color: #0A1628;
+  }
+
+  .reveal{ font-family: 'Inter', -apple-system, sans-serif; font-weight: 400; }
+  .reveal h1, .reveal h2, .reveal h3{
+    font-family: 'Inter', sans-serif;
+    text-transform: none; font-weight: 700;
+  }
+  .reveal code, .reveal .mono { font-family: 'JetBrains Mono', monospace; font-size: 0.9em; }
+  .reveal .slides section{
+    width: 960px; height: 540px;
+    padding: 0; margin: 0; box-sizing: border-box;
+    text-align: left;
+  }
+  .reveal .slides section > *{ box-sizing: border-box; }
+  .reveal .slides section h1, .reveal .slides section h2, .reveal .slides section h3,
+  .reveal .slides section p, .reveal .slides section li, .reveal .slides section td,
+  .reveal .slides section th, .reveal .slides section div{ text-shadow: none; }
+  .reveal .slides section ul{ padding: 0; margin: 0; list-style: none; }
+  .reveal .slides section p{ margin: 0; }
+
+  /* Shared footer */
+  .reveal .footer{
+    position: absolute; bottom: 0; left: 0; right: 0; height: 26px;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0 32px; font-size: 9.5px; color: var(--muted);
+    font-family: 'Inter', sans-serif; letter-spacing: 0.4px; z-index: 10;
+    background: transparent;
+  }
+  .reveal .footer .left{ display: flex; align-items: center; gap: 10px; }
+  .reveal .footer .dot{ color: var(--green); font-weight: 700; }
+  .reveal .footer .page{ font-variant-numeric: tabular-nums; color: var(--text-soft); font-weight: 600; }
+
+  /* Shared title bar */
+  .reveal .title-bar{
+    background: var(--bg); padding: 16px 32px 18px; flex-shrink: 0;
+    display: flex; flex-direction: column; gap: 4px; position: relative;
+  }
+  .reveal .title-bar .kicker{
+    color: var(--green); font-size: 10px; font-weight: 700;
+    letter-spacing: 2.5px; text-transform: uppercase;
+    line-height: 1; margin: 0 0 4px;
+  }
+  .reveal .title-bar h2{
+    color: white; font-size: 26px; font-weight: 700;
+    margin: 0; padding: 0; line-height: 1.2; letter-spacing: -0.2px;
+  }
+  .reveal .title-bar .subtitle{
+    color: rgba(255,255,255,0.7); font-size: 13px; font-weight: 400;
+    margin: 4px 0 0; line-height: 1.4;
+  }
+  .reveal .title-bar::after{
+    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+    background: linear-gradient(to right, var(--green) 0%, var(--green) 25%, var(--orange) 25%, var(--orange) 50%, transparent 50%);
+    opacity: 0.95;
+  }
+
+  /* ========================= SLIDE 1: TITLE ========================= */
+  .reveal .s1{
+    background: var(--bg) !important;
+    display: grid !important; grid-template-columns: 1fr 360px;
+    grid-template-rows: 1fr auto;
+  }
+  .reveal .s1 .left{
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 0 50px; z-index: 2;
+  }
+  .reveal .s1 .brand{
+    color: var(--green); font-size: 12px; font-weight: 700;
+    letter-spacing: 5px; text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  .reveal .s1 .brand .dot{ color: var(--orange); }
+  .reveal .s1 h1{
+    color: white; font-size: 44px; font-weight: 800; line-height: 1.05;
+    margin-bottom: 16px; letter-spacing: -1px;
+  }
+  .reveal .s1 h1 .accent{ color: var(--green); }
+  .reveal .s1 .subtitle{
+    color: rgba(255,255,255,0.78); font-size: 16px; font-weight: 400;
+    line-height: 1.5; max-width: 480px;
+  }
+  .reveal .s1 .meta{
+    margin-top: 28px; padding-top: 14px;
+    border-top: 1px solid rgba(118, 185, 0, 0.3);
+    display: flex; flex-direction: column; gap: 6px;
+    font-size: 12px; color: rgba(255,255,255,0.85);
+  }
+  .reveal .s1 .meta .row{ display: flex; gap: 12px; }
+  .reveal .s1 .meta .label{
+    color: var(--green); font-weight: 700; letter-spacing: 0.6px;
+    min-width: 90px; font-size: 10px; text-transform: uppercase;
+  }
+  .reveal .s1 .right{ position: relative; overflow: hidden; }
+  .reveal .s1 .robot-frame{
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 280px; height: 280px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #1a3050 0%, var(--bg-soft) 50%, var(--bg) 100%);
+    box-shadow: inset 0 0 60px rgba(0,0,0,0.5), 0 0 80px rgba(118,185,0,0.15);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .reveal .s1 .robot-frame::after{
+    content: ''; position: absolute; inset: 28px;
+    border: 1px solid rgba(118,185,0,0.35); border-radius: 50%;
+  }
+  .reveal .s1 .robot-frame::before{
+    content: ''; position: absolute; inset: 50px;
+    border: 1px dashed rgba(255,140,0,0.25); border-radius: 50%;
+  }
+  .reveal .s1 .robot-emoji{
+    font-size: 110px; line-height: 1; z-index: 2; user-select: none;
+    filter: drop-shadow(0 2px 12px rgba(118,185,0,0.4));
+  }
+  .reveal .s1 .stripe{
+    position: absolute; bottom: 0; left: 0; right: 0; height: 30px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 32px; z-index: 3; grid-column: 1 / -1;
+    background: linear-gradient(to right, var(--green) 0%, var(--green) 50%, var(--orange) 50%, var(--orange) 100%);
+    color: var(--bg); font-size: 10px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase;
+  }
+
+  /* ========================= SLIDE 2: AGENDA ========================= */
+  .reveal .s2{
+    background: var(--bg-light) !important;
+    display: flex !important;
+  }
+  .reveal .s2 > .left{
+    width: 280px; background: var(--bg);
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 0 32px;
+  }
+  .reveal .s2 > .left .eyebrow{ color: var(--green); font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px;}
+  .reveal .s2 > .left h2{ font-size: 30px; font-weight: 800; color: white; line-height: 1.15; margin-bottom: 14px;}
+  .reveal .s2 > .left p{ color: rgba(255,255,255,0.7); font-size: 12px; line-height: 1.5;}
+  .reveal .s2 > .right{
+    flex: 1; padding: 38px 40px;
+    display: flex; flex-direction: column; justify-content: center; gap: 0;
+  }
+  .reveal .s2 .agenda-item{
+    display: flex; align-items: center; gap: 18px;
+    padding: 11px 0; border-bottom: 1px solid var(--line);
+  }
+  .reveal .s2 .agenda-item:last-child{ border-bottom: none; }
+  .reveal .s2 .num{
+    width: 34px; height: 34px; background: var(--bg);
+    color: var(--green); display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 14px; flex-shrink: 0; border-radius: 4px;
+  }
+  .reveal .s2 .agenda-text{ font-size: 15px; color: var(--text); font-weight: 500; }
+  .reveal .s2 .agenda-text strong{ color: var(--bg); font-weight: 700; }
+  .reveal .s2 .agenda-text .meta{ color: var(--muted); font-size: 12px; margin-left: 8px; font-weight: 400; }
+
+  /* ========================= GENERIC CONTENT SLIDE ========================= */
+  .reveal .scontent{
+    background: var(--bg-light) !important;
+    display: grid !important; grid-template-rows: auto 1fr auto;
+  }
+  .reveal .scontent .body{ padding: 22px 36px 0; min-height: 0; overflow: hidden; }
+  .reveal .scontent .body p.lead{
+    font-size: 14px; color: var(--text); line-height: 1.5; margin-bottom: 14px;
+  }
+  .reveal .scontent .body p.lead strong{ color: var(--bg); font-weight: 700; }
+
+  /* Stat cards (slide 3 — event facts) */
+  .reveal .stat-grid{
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 8px;
+  }
+  .reveal .stat-card{
+    background: white; padding: 16px 18px; border-radius: 6px;
+    box-shadow: 0 2px 12px rgba(10,22,40,0.06);
+    border-top: 3px solid var(--green);
+  }
+  .reveal .stat-card.alt{ border-top-color: var(--orange); }
+  .reveal .stat-card .label{
+    font-size: 10px; color: var(--muted); font-weight: 700;
+    letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 8px;
+  }
+  .reveal .stat-card .value{
+    font-size: 22px; color: var(--text); font-weight: 800; line-height: 1.05;
+    margin-bottom: 4px;
+  }
+  .reveal .stat-card .note{ font-size: 11px; color: var(--text-soft); line-height: 1.4; }
+
+  /* Pipeline diagram (slide 5) */
+  .reveal .pipeline{
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+    margin: 16px 0 12px; align-items: stretch; position: relative;
+  }
+  .reveal .pipe-step{
+    background: white; padding: 14px 14px 14px 22px; position: relative;
+    box-shadow: 0 2px 12px rgba(10,22,40,0.06);
+    display: flex; flex-direction: column; gap: 6px;
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%, 14px 50%);
+    margin-right: -8px;
+  }
+  .reveal .pipe-step:first-child{
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%);
+    padding-left: 18px;
+  }
+  .reveal .pipe-step:last-child{
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 14px 50%);
+    margin-right: 0;
+  }
+  .reveal .pipe-step .icon{ font-size: 26px; line-height: 1; }
+  .reveal .pipe-step .role{
+    font-size: 10px; font-weight: 700; color: var(--green);
+    letter-spacing: 1.2px; text-transform: uppercase;
+  }
+  .reveal .pipe-step .what{ font-size: 12px; color: var(--text); font-weight: 600; line-height: 1.3; }
+  .reveal .pipe-step .plain{ font-size: 10.5px; color: var(--text-soft); line-height: 1.4; font-style: italic; }
+  .reveal .pipe-step.brain .role{ color: var(--orange); }
+  .reveal .pipe-step.brain{ background: linear-gradient(135deg, #fff 0%, #fff5e6 100%); }
+
+  /* Glossary table */
+  .reveal .glossary{
+    width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px;
+  }
+  .reveal .glossary th{
+    text-align: left; padding: 8px 12px; background: var(--bg);
+    color: var(--green); font-size: 10px; font-weight: 700;
+    letter-spacing: 1.2px; text-transform: uppercase;
+  }
+  .reveal .glossary td{
+    padding: 11px 12px; border-bottom: 1px solid var(--line);
+    color: var(--text); vertical-align: top; line-height: 1.45;
+    background: white;
+  }
+  .reveal .glossary td.term{
+    font-weight: 700; color: var(--bg); width: 28%;
+    font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+  }
+  .reveal .glossary td.term .pron{
+    display: block; font-family: 'Inter', sans-serif; font-weight: 400;
+    color: var(--muted); font-size: 10px; font-style: italic; margin-top: 2px;
+  }
+  .reveal .glossary tr:hover td{ background: #FAFCFF; }
+  .reveal .glossary td strong{ color: var(--bg); }
+  .reveal .glossary .analogy{
+    display: block; margin-top: 4px; padding-top: 4px; padding-left: 8px;
+    border-left: 2px solid var(--orange); font-style: italic;
+    color: var(--text-soft); font-size: 11px;
+  }
+
+  /* Roles grid (slide 8) */
+  .reveal .roles{
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 6px;
+  }
+  .reveal .role-card{
+    background: white; padding: 12px 16px; border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(10,22,40,0.06);
+    border-left: 4px solid var(--green);
+  }
+  .reveal .role-card.alt{ border-left-color: var(--orange); }
+  .reveal .role-card .name{
+    font-size: 13px; font-weight: 800; color: var(--bg);
+    margin-bottom: 4px; display: flex; align-items: center; gap: 8px;
+  }
+  .reveal .role-card .name .icon{ font-size: 18px; }
+  .reveal .role-card .desc{ font-size: 11.5px; color: var(--text-soft); line-height: 1.45; }
+  .reveal .role-card .desc strong{ color: var(--text); }
+
+  /* Schedule timeline (slide 9) */
+  .reveal .timeline{
+    display: flex; flex-direction: column; gap: 0; margin-top: 8px;
+    background: white; border-radius: 6px; overflow: hidden;
+    box-shadow: 0 2px 12px rgba(10,22,40,0.06);
+  }
+  .reveal .tl-row{
+    display: grid; grid-template-columns: 100px 24px 1fr;
+    align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line);
+    gap: 14px;
+  }
+  .reveal .tl-row:last-child{ border-bottom: none; }
+  .reveal .tl-row.now{ background: linear-gradient(90deg, #f0fae0 0%, #fff 100%); }
+  .reveal .tl-row.peak{ background: linear-gradient(90deg, #fff5e6 0%, #fff 100%); }
+  .reveal .tl-time{
+    font-family: 'JetBrains Mono', monospace; font-weight: 700;
+    color: var(--bg); font-size: 13px;
+  }
+  .reveal .tl-dot{
+    width: 10px; height: 10px; border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 0 3px rgba(118,185,0,0.2);
+  }
+  .reveal .tl-row.peak .tl-dot{ background: var(--orange); box-shadow: 0 0 0 3px rgba(255,140,0,0.2); }
+  .reveal .tl-row.muted .tl-dot{ background: var(--muted); box-shadow: none; }
+  .reveal .tl-what{ font-size: 12px; color: var(--text); }
+  .reveal .tl-what strong{ color: var(--bg); font-weight: 700; }
+  .reveal .tl-what .role{
+    margin-left: 8px; color: var(--green); font-size: 10px;
+    font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  }
+
+  /* Cut-list cascade */
+  .reveal .cuts{ display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .reveal .cut-row{
+    display: grid; grid-template-columns: 90px 1fr 1fr; gap: 16px;
+    background: white; padding: 10px 16px; border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(10,22,40,0.05);
+    border-left: 4px solid var(--orange);
+    align-items: center;
+  }
+  .reveal .cut-time{
+    font-family: 'JetBrains Mono', monospace; font-weight: 800;
+    color: var(--orange); font-size: 13px;
+  }
+  .reveal .cut-trigger{ font-size: 11.5px; color: var(--text); }
+  .reveal .cut-trigger strong{ color: var(--bg); font-weight: 700; }
+  .reveal .cut-action{
+    font-size: 11.5px; color: var(--text-soft); padding-left: 14px;
+    border-left: 1px dashed var(--line);
+  }
+  .reveal .cut-action strong{ color: var(--green); font-weight: 700; }
+
+  /* Callout (closing slide) */
+  .reveal .callout-bar{
+    background: var(--bg); margin: 0 32px 32px; padding: 12px 18px;
+    display: flex; align-items: center; gap: 14px; flex-shrink: 0;
+    border-radius: 4px;
+  }
+  .reveal .callout-bar .icon{
+    width: 32px; height: 32px; background: var(--green); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    color: var(--bg); font-weight: 800; font-size: 16px;
+  }
+  .reveal .callout-bar .text{ color: white; font-size: 12px; line-height: 1.5; }
+  .reveal .callout-bar .text strong{ color: var(--green); }
+
+  /* Tonight slide — homework cards */
+  .reveal .home-grid{
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 8px;
+  }
+  .reveal .home-card{
+    background: white; padding: 16px; border-radius: 6px;
+    box-shadow: 0 2px 12px rgba(10,22,40,0.06);
+    display: flex; flex-direction: column; gap: 6px; min-height: 200px;
+  }
+  .reveal .home-card .icon{ font-size: 32px; line-height: 1; margin-bottom: 4px; }
+  .reveal .home-card .title{ font-size: 14px; font-weight: 800; color: var(--bg); }
+  .reveal .home-card .body{ font-size: 11.5px; color: var(--text-soft); line-height: 1.5; flex: 1; }
+  .reveal .home-card .body strong{ color: var(--text); }
+  .reveal .home-card.green{ border-top: 4px solid var(--green); }
+  .reveal .home-card.orange{ border-top: 4px solid var(--orange); }
+  .reveal .home-card.teal{ border-top: 4px solid var(--teal); }
+
+  /* Final slide */
+  .reveal .sfin{
+    background: var(--bg) !important;
+    display: flex !important; flex-direction: column;
+    align-items: center; justify-content: center; padding: 60px;
+  }
+  .reveal .sfin h1{
+    color: white; font-size: 48px; font-weight: 800; line-height: 1.1;
+    margin-bottom: 16px; text-align: center; letter-spacing: -1px;
+  }
+  .reveal .sfin h1 .accent{ color: var(--green); }
+  .reveal .sfin .sub{
+    color: rgba(255,255,255,0.75); font-size: 16px; line-height: 1.5;
+    text-align: center; max-width: 600px; margin-bottom: 32px;
+  }
+  .reveal .sfin .signoff{
+    display: flex; gap: 30px; align-items: center; padding-top: 20px;
+    border-top: 1px solid rgba(118,185,0,0.3);
+  }
+  .reveal .sfin .signoff .person{
+    color: var(--green); font-size: 13px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase;
+  }
+  .reveal .sfin .signoff .person .role{
+    display: block; color: rgba(255,255,255,0.5); font-size: 10px;
+    font-weight: 500; letter-spacing: 1px; margin-top: 3px;
+  }
+</style>
+</head>
+<body>
+<div class="reveal">
+  <div class="slides">
+
+    <!-- ================ 1 · TITLE ================ -->
+    <section class="s1">
+      <div class="left">
+        <div class="brand">Just Build <span class="dot">·</span> Team brief</div>
+        <h1>Tomorrow we hack a <span class="accent">robot</span></h1>
+        <div class="subtitle">Two hours. Three people. One AI agent that sees, hears, and moves. Here's what we're building, and why we're going to win it.</div>
+        <div class="meta">
+          <div class="row"><span class="label">When</span><span>Friday 8 May 2026 · 10:30 sharp</span></div>
+          <div class="row"><span class="label">Where</span><span>Kistamässan, Stockholm — main stage P1 by 10:20</span></div>
+          <div class="row"><span class="label">Team</span><span>Kamila · Simon · Timur</span></div>
+          <div class="row"><span class="label">Prize</span><span>HP ZGX Nano AI Station — each</span></div>
+        </div>
+      </div>
+      <div class="right">
+        <div class="robot-frame">
+          <div class="robot-emoji">🤖</div>
+        </div>
+      </div>
+      <div class="stripe">
+        <span>HP × NVIDIA · ZGX Nano Hackathon</span>
+        <span>2026-05-07 · evening brief</span>
+      </div>
+    </section>
+
+    <!-- ================ 2 · AGENDA ================ -->
+    <section class="s2">
+      <div class="left">
+        <div class="eyebrow">Tonight · 30 min</div>
+        <h2>What we'll cover</h2>
+        <p>So tomorrow nothing is mysterious — and you know exactly what you're doing from 10:20 onward.</p>
+      </div>
+      <div class="right">
+        <div class="agenda-item">
+          <div class="num">1</div>
+          <div class="agenda-text"><strong>The event</strong> — what HP and NVIDIA actually want us to do <span class="meta">~ 3 min</span></div>
+        </div>
+        <div class="agenda-item">
+          <div class="num">2</div>
+          <div class="agenda-text"><strong>The robot</strong> — what we're teaching it, in plain words <span class="meta">~ 5 min</span></div>
+        </div>
+        <div class="agenda-item">
+          <div class="num">3</div>
+          <div class="agenda-text"><strong>The vocabulary</strong> — every weird word we'll say tomorrow <span class="meta">~ 8 min</span></div>
+        </div>
+        <div class="agenda-item">
+          <div class="num">4</div>
+          <div class="agenda-text"><strong>Your roles</strong> — without your laptops, you're the difference <span class="meta">~ 6 min</span></div>
+        </div>
+        <div class="agenda-item">
+          <div class="num">5</div>
+          <div class="agenda-text"><strong>The clock</strong> — minute-by-minute view of tomorrow <span class="meta">~ 3 min</span></div>
+        </div>
+        <div class="agenda-item">
+          <div class="num">6</div>
+          <div class="agenda-text"><strong>Tonight's homework</strong> — three small things, then sleep <span class="meta">~ 2 min</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================ 3 · THE EVENT ================ -->
+    <section class="scontent">
+      <div class="title-bar">
+        <div class="kicker">01 · The event</div>
+        <h2>HP &amp; NVIDIA ZGX Nano Hackathon</h2>
+        <div class="subtitle">Two industry sponsors. One physical robot per team. A computer worth thousands of euros for each winning teammate.</div>
+      </div>
+      <div class="body">
+        <p class="lead">It's a <strong>2-hour 10-minute build sprint</strong>. They reveal the robot and the challenge at 10:30; we start coding at 10:50; we submit at 13:00. The judges are looking for three things: <strong>did we use the powerful machines they gave us</strong>, <strong>did we wire up vision and audio meaningfully</strong>, and <strong>does the agent actually work</strong>.</p>
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="label">Build window</div>
+            <div class="value">2h 10min</div>
+            <div class="note">10:50 → 13:00. Submission is hard at 13:00 sharp.</div>
+          </div>
+          <div class="stat-card alt">
+            <div class="label">The prize</div>
+            <div class="value">ZGX Nano</div>
+            <div class="note">A small NVIDIA AI computer. One per teammate if we win.</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">What we get on-site</div>
+            <div class="value">2× ZGX</div>
+            <div class="note">Two of those AI computers, plus a physical robot.</div>
+          </div>
+          <div class="stat-card alt">
+            <div class="label">What they judge</div>
+            <div class="value">3 axes</div>
+            <div class="note">Hardware use · sensor integration · agent quality.</div>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><div class="left"><span>Just Build</span><span class="dot">·</span><span>Team brief</span></div><span class="page">3 / 11</span></div>
+    </section>
+
+    <!-- ================ 4 · THE CHALLENGE IN ONE SENTENCE ================ -->
+    <section class="scontent">
+      <div class="title-bar">
+        <div class="kicker">02 · The challenge</div>
+        <h2>Build an AI agent that drives a real robot — using vision and voice — in two hours</h2>
+        <div class="subtitle">We don't know which robot. We don't know the task. We find out at 10:30. That's the whole game.</div>
+      </div>
+      <div class="body">
+        <p class="lead">Imagine giving a Roomba <strong>real ears</strong> (it understands what you say), <strong>real eyes</strong> (it understands what's in front of it), and <strong>a small brain</strong> that decides what to do next. That's the agent. It's the same idea as a self-driving car, but in 2 hours and on a different robot every time.</p>
+        <p class="lead" style="margin-top: 10px;">Because the robot is a surprise, we've spent <strong>weeks building a base</strong> that can plug into <em>any</em> robot in 30 minutes. Tomorrow we don't write a robot agent from scratch — we <strong>connect the last cable</strong>.</p>
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="label">Already built ✅</div>
+            <div class="value">The brain</div>
+            <div class="note">Voice → think → move loop. 113 tests pass. Ready.</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Already built ✅</div>
+            <div class="value">The dashboard</div>
+            <div class="note">Live view of what the robot sees, hears, and does.</div>
+          </div>
+          <div class="stat-card alt">
+            <div class="label">To do tomorrow ⚙️</div>
+            <div class="value">The cable</div>
+            <div class="note">A small file (200 lines) that talks to the specific robot.</div>
+          </div>
+          <div class="stat-card alt">
+            <div class="label">To do tomorrow ⚙️</div>
+            <div class="value">The story</div>
+            <div class="note">A 60-second demo for the judges. Recorded twice.</div>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><div class="left"><span>Just Build</span><span class="dot">·</span><span>Team brief</span></div><span class="page">4 / 11</span></div>
+    </section>
+
+    <!-- ================ 5 · HOW IT WORKS (PIPELINE) ================ -->
+    <section class="scontent">
+      <div class="title-bar">
+        <div class="kicker">03 · How it actually works</div>
+        <h2>Voice + camera → small brain → action — repeated five times per second</h2>
+        <div class="subtitle">Same shape every tick. The robot's "loop" is just these four steps in a row, over and over.</div>
+      </div>
+      <div class="body">
+        <div class="pipeline">
+          <div class="pipe-step">
+            <div class="icon">🎤</div>
+            <div class="role">Step 1 · Ears</div>
+            <div class="what">You say something out loud.</div>
+            <div class="plain">A small program writes down your words ("turn left and pick up the cup").</div>
+          </div>
+          <div class="pipe-step">
+            <div class="icon">📷</div>
+            <div class="role">Step 2 · Eyes</div>
+            <div class="what">The camera takes a picture, twice a second.</div>
+            <div class="plain">A different program looks at it and writes "I see a red cup, a chair, and a person."</div>
+          </div>
+          <div class="pipe-step brain">
+            <div class="icon">🧠</div>
+            <div class="role">Step 3 · Brain</div>
+            <div class="what">The brain reads both notes and decides one move.</div>
+            <div class="plain">"Turn 30° left, then walk forward 0.5 m." It also picks the next thing to say back.</div>
+          </div>
+          <div class="pipe-step">
+            <div class="icon">🦾</div>
+            <div class="role">Step 4 · Body</div>
+            <div class="what">The robot executes the move and speaks the line.</div>
+            <div class="plain">Then we go back to step 1 — the loop never stops until we say "done".</div>
+          </div>
+        </div>
+        <p class="lead" style="margin-top: 16px;">The whole loop has to happen in <strong>under 2 seconds</strong>, otherwise it feels laggy. That's why we run the brain on the powerful machines NVIDIA gives us, not on a laptop. Every box you'll hear us say tomorrow — <code>vLLM</code>, <code>Nemotron</code>, <code>Ollama</code> — is a different way of running that brain.</p>
+      </div>
+      <div class="footer"><div class="left"><span>Just Build</span><span class="dot">·</span><span>Team brief</span></div><span class="page">5 / 11</span></div>
+    </section>
+
+    <!-- ================ 6 · GLOSSARY 1 — THE BRAINS ================ -->
+    <section class="scontent">
+      <div class="title-bar">
+        <div class="kicker">04 · Vocabulary · Part 1 of 2</div>
+        <h2>The brains — the AI models that "think"</h2>
+        <div class="subtitle">When Timur says "the LLM is slow" or "swap the VLM" — these are the things he's talking about.</div>
+      </div>
+      <div class="body">
+        <table class="glossary">
+          <thead>
+            <tr><th>Term</th><th>What it actually means</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="term">LLM<span class="pron">"el-el-em" · Large Language Model</span></td>
+              <td>A program that <strong>reads and writes text</strong>. ChatGPT is an LLM. We use one to decide "what should the robot do next?" The bigger it is, the smarter — but also the slower.<span class="analogy">Like a very fast assistant who's read the entire internet but only sees text.</span></td>
+            </tr>
+            <tr>
+              <td class="term">VLM<span class="pron">"vee-el-em" · Vision-Language Model</span></td>
+              <td>An LLM that <strong>also sees pictures</strong>. We give it the camera frame and ask: "describe what's in front of you." It writes back text that the brain (the LLM) then uses to decide.<span class="analogy">Same assistant, but now also wearing glasses.</span></td>
+            </tr>
+            <tr>
+              <td class="term">Nemotron 3 Nano Omni<span class="pron">"NEH-mo-tron Omni"</span></td>
+              <td>The specific brain <strong>NVIDIA pre-loaded on the hackathon machines</strong> for us. It's special because it does <strong>both</strong> jobs (LLM + VLM) at once. One program sees and thinks.<span class="analogy">A two-in-one assistant. Less wiring for us.</span></td>
+            </tr>
+            <tr>
+              <td class="term">Qwen 3.6 35B A3B<span class="pron">"kwen thirty-five bee"</span></td>
+              <td>The <strong>backup brain</strong> on those same machines. Made by Alibaba. Only does text (no eyes). We'd use it if Nemotron's vision doesn't work well.<span class="analogy">A blind genius. Smart, but needs us to describe the room.</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="footer"><div class="left"><span>Just Build</span><span class="dot">·</span><span>Team brief</span></div><span class="page">6 / 11</span></div>
+    </section>
+
+    <!-- ================ 7 · GLOSSARY 2 — THE PLUMBING ================ -->
+    <section class="scontent">
+      <div class="title-bar">
+        <div class="kicker">04 · Vocabulary · Part 2 of 2</div>
+        <h2>The plumbing — the things that connect everything</h2>
+        <div class="subtitle">Boring but useful. If you hear one of these words and feel lost, glance back here.</div>
+      </div>
+      <div class="body">
+        <table class="glossary">
+          <tbody>
+            <tr>
+              <td class="term">vLLM<span class="pron">"vee-el-el-em"</span></td>
+              <td>The <strong>engine that runs the brain</strong> on the hackathon computer. It's the gasoline that makes Nemotron go fast. We don't write it; it's pre-installed.<span class="analogy">Like the kitchen — the chef (the brain) needs it to actually cook.</span></td>
+            </tr>
+            <tr>
+              <td class="term">Ollama<span class="pron">"oh-LAH-ma"</span></td>
+              <td>A <strong>different engine</strong>, way simpler, that we use on Timur's Mac for testing. Tomorrow we'll keep it as a backup if vLLM has trouble.<span class="analogy">A small kitchen at home for prototyping.</span></td>
+            </tr>
+            <tr>
+              <td class="term">ZGX Nano<span class="pron">"zee-jee-ex nano"</span></td>
+              <td>The <strong>two AI computers</strong> HP gives us at the venue. The brains run there; we control them remotely from the laptop. The prize is one of these per teammate.<span class="analogy">A tiny supercomputer the size of a Mac mini.</span></td>
+            </tr>
+            <tr>
+              <td class="term">Adapter<span class="pron">"ah-DAP-ter"</span></td>
+              <td>A small piece of code (~200 lines) that <strong>translates</strong> our generic command "move forward 1 meter" into <em>this specific</em> robot's language. We pre-built two; tomorrow we may need to write a third in 30 min.<span class="analogy">A power plug adapter — same socket, different country.</span></td>
+            </tr>
+            <tr>
+              <td class="term">Rehearsal<span class="pron">"the practice runs"</span></td>
+              <td>We've already run the agent <strong>100+ times against a fake robot</strong> on a Mac. That's why we're confident. Tomorrow is just plugging the real robot into a system that already works.<span class="analogy">Like doing a wedding rehearsal before the real day.</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="footer"><div class="left"><span>Just Build</span><span class="dot">·</span><span>Team brief</span></div><span class="page">7 / 11</span></div>
+    </section>
+
+    <!-- ================ 8 · YOUR ROLES ================ -->
+    <section class="scontent">
+      <div class="title-bar">
+        <div class="kicker">05 · Your roles</div>
+        <h2>Without your laptops, you are the difference between winning and losing</h2>
+        <div class="subtitle">The build runs on Timur's laptop only. The robot only listens to one machine anyway. Your jobs are higher-leverage.</div>
+      </div>
+      <div class="body">
+        <div class="roles">
+          <div class="role-card">
+            <div class="name"><span class="icon">⌨️</span> Listener-typist</div>
+            <div class="desc">During the 30-min intro, <strong>type what the speaker says</strong> into <code>docs/DAY_OF_BRIEF.md</code> on Timur's laptop. Don't worry about structure — write whatever you hear. Claude turns your notes into config edits in 5 min.</div>
+          </div>
+          <div class="role-card alt">
+            <div class="name"><span class="icon">🎬</span> Demo lead</div>
+            <div class="desc">From T+1:30 onward: <strong>record the demo on your phone</strong> (backup video), check the dashboard renders, narrate the 60-second judged run. The dashboard is our biggest visible feature — keep it on screen.</div>
+          </div>
+          <div class="role-card">
+            <div class="name"><span class="icon">⏱️</span> Time keeper</div>
+            <div class="desc">We live and die by the clock. Call out loudly: <strong>"T+1:00"</strong>, <strong>"T+1:30"</strong>, <strong>"T+1:45 — freeze!"</strong>. If the room is loud, walk over and tap shoulders. This is non-negotiable.</div>
+          </div>
+          <div class="role-card alt">
+            <div class="name"><span class="icon">✂️</span> Cut-list enforcer</div>
+            <div class="desc">At T+1:30 if we're behind, <strong>someone must say "we drop X"</strong>. Timur is too deep in the code to see it. The cuts are pre-decided (next slide). You just call them.</div>
+          </div>
+          <div class="role-card">
+            <div class="name"><span class="icon">👁️</span> Quality eyes</div>
+            <div class="desc">Watch the robot move. If it's about to crash into something, <strong>hit the kill switch</strong>. If it speaks gibberish or freezes, tell us. Our heads are in code — yours are on the floor.</div>
+          </div>
+          <div class="role-card alt">
+            <div class="name"><span class="icon">☕</span> Outside ops</div>
+            <div class="desc">Coffee runs, asking organizers questions, making sure we eat at 12:30. Sounds small, doesn't matter… until your blood sugar tanks at T+1:45.</div>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><div class="left"><span>Just Build</span><span class="dot">·</span><span>Team brief</span></div><span class="page">8 / 11</span></div>
+    </section>
+
+    <!-- ================ 9 · TIMELINE ================ -->
+    <section class="scontent">
+      <div class="title-bar">
+        <div class="kicker">06 · The clock</div>
+        <h2>Tomorrow — minute by minute, your view</h2>
+        <div class="subtitle">Green = where you're actively driving the team. Orange = critical decision moments.</div>
+      </div>
+      <div class="body">
+        <div class="timeline">
+          <div class="tl-row muted">
+            <div class="tl-time">09:30</div><div class="tl-dot"></div>
+            <div class="tl-what">Wake up. Coffee. Phones charged. Bring your charger.</div>
+          </div>
+          <div class="tl-row">
+            <div class="tl-time">10:20</div><div class="tl-dot"></div>
+            <div class="tl-what"><strong>Approach main stage P1.</strong> All three of us. Don't be late. <span class="role">All</span></div>
+          </div>
+          <div class="tl-row">
+            <div class="tl-time">10:30</div><div class="tl-dot"></div>
+            <div class="tl-what">Challenge briefing starts. <strong>Listener-typist on Timur's laptop.</strong> The other two listen for the kind of robot, the task, any constraints. <span class="role">Kamila / Simon</span></div>
+          </div>
+          <div class="tl-row">
+            <div class="tl-time">10:50</div><div class="tl-dot"></div>
+            <div class="tl-what">Build window opens. Timur starts coding. <strong>Time keeper announces every 15 min.</strong> <span class="role">All</span></div>
+          </div>
+          <div class="tl-row peak">
+            <div class="tl-time">T+1:00</div><div class="tl-dot"></div>
+            <div class="tl-what"><strong>First cut-decision moment</strong> if audio is flaky. Cut-list enforcer evaluates. <span class="role">Cut enforcer</span></div>
+          </div>
+          <div class="tl-row peak">
+            <div class="tl-time">T+1:30</div><div class="tl-dot"></div>
+            <div class="tl-what"><strong>Hard cut decision</strong>. Demo lead starts capturing takes from here. <span class="role">Demo / Cut</span></div>
+          </div>
+          <div class="tl-row peak">
+            <div class="tl-time">T+1:45</div><div class="tl-dot"></div>
+            <div class="tl-what"><strong>Time keeper shouts "freeze"</strong>. We stop changing code. Two clean takes recorded. <span class="role">Time keeper</span></div>
+          </div>
+          <div class="tl-row">
+            <div class="tl-time">13:00</div><div class="tl-dot"></div>
+            <div class="tl-what"><strong>Submit.</strong> Hard deadline. <span class="role">All</span></div>
+          </div>
+          <div class="tl-row muted">
+            <div class="tl-time">14:10</div><div class="tl-dot"></div>
+            <div class="tl-what">Winners announced. We hold a ZGX Nano each, hopefully. 🏆</div>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><div class="left"><span>Just Build</span><span class="dot">·</span><span>Team brief</span></div><span class="page">9 / 11</span></div>
+    </section>
+
+    <!-- ================ 10 · THE CUT-LIST ================ -->
+    <section class="scontent">
+      <div class="title-bar">
+        <div class="kicker">07 · Plan B (and C, D, E)</div>
+        <h2>The cut-list — we drop things on purpose, in this exact order</h2>
+        <div class="subtitle">Cutting is not failure. Cutting is the plan. The team who ships a smaller working demo beats the team who ships nothing.</div>
+      </div>
+      <div class="body">
+        <div class="cuts">
+          <div class="cut-row">
+            <div class="cut-time">T+1:00</div>
+            <div class="cut-trigger"><strong>Cut #1.</strong> If the microphone keeps missing your voice or the speech-to-text is wrong half the time…</div>
+            <div class="cut-action">…we <strong>drop the microphone</strong>. We type commands into the dashboard instead. Same robot, just no voice in.</div>
+          </div>
+          <div class="cut-row">
+            <div class="cut-time">T+1:15</div>
+            <div class="cut-trigger"><strong>Cut #2.</strong> If the robot's voice (the speaker) is laggy or makes the loop slow…</div>
+            <div class="cut-action">…we <strong>drop the robot's voice</strong>. We show subtitles on the dashboard instead. Robot still does everything else.</div>
+          </div>
+          <div class="cut-row">
+            <div class="cut-time">T+1:30</div>
+            <div class="cut-trigger"><strong>Cut #3.</strong> If juggling two AI computers gets brittle (network drops, sync issues)…</div>
+            <div class="cut-action">…we <strong>drop the second computer</strong>. Run everything on one. Slower, but rock-solid.</div>
+          </div>
+          <div class="cut-row">
+            <div class="cut-time">T+1:45</div>
+            <div class="cut-trigger"><strong>Cut #4 (last resort).</strong> If the actual robot is crashing or the adapter is flaky…</div>
+            <div class="cut-action">…we <strong>show a video of an earlier run</strong> + drive a fake robot live. Judges see the agent thinking; the physical robot stays parked.</div>
+          </div>
+        </div>
+        <p class="lead" style="margin-top: 14px; font-size: 12.5px;">Cut-list enforcer: when the time hits and the symptom matches, you say it out loud. We do it. No debate. Timur literally has a Claude Code skill (<code>/cut-list</code>) that applies the right cut in 30 seconds.</p>
+      </div>
+      <div class="footer"><div class="left"><span>Just Build</span><span class="dot">·</span><span>Team brief</span></div><span class="page">10 / 11</span></div>
+    </section>
+
+    <!-- ================ 11 · TONIGHT'S HOMEWORK ================ -->
+    <section class="scontent">
+      <div class="title-bar">
+        <div class="kicker">08 · Before bed</div>
+        <h2>Three small things, then sleep</h2>
+        <div class="subtitle">If you can only do one thing — do #1. Sleep matters more than the other two combined.</div>
+      </div>
+      <div class="body">
+        <div class="home-grid">
+          <div class="home-card green">
+            <div class="icon">😴</div>
+            <div class="title">1. Sleep 7+ hours</div>
+            <div class="body">Set an alarm for 09:00 — that gives you 80 minutes to coffee + travel and arrive by 10:20. <strong>The build is mentally exhausting</strong>; under-rested teams make worse cut-list calls. This is the most important homework.</div>
+          </div>
+          <div class="home-card orange">
+            <div class="icon">📖</div>
+            <div class="title">2. Re-read slides 6 &amp; 7</div>
+            <div class="body">The vocabulary slides. Just skim them once before bed. You don't need to memorize — but if Timur shouts <strong>"the VLM is broken, swap to Ollama!"</strong> you should know what's happening, not freeze.</div>
+          </div>
+          <div class="home-card teal">
+            <div class="icon">🔋</div>
+            <div class="title">3. Charge + pack</div>
+            <div class="body">Phone to <strong>100%</strong>, plus power bank if you have one. Earbuds (the venue is loud). Comfortable shoes. Snack. Water bottle. <strong>Don't bring your laptops</strong> unless you want to — we won't use them.</div>
+          </div>
+        </div>
+        <p class="lead" style="margin-top: 16px; text-align: center; font-size: 13px;">📍 <strong>Kistamässan, main stage P1, 10:20.</strong> If you're going to be late, message the team chat now, not tomorrow.</p>
+      </div>
+      <div class="footer"><div class="left"><span>Just Build</span><span class="dot">·</span><span>Team brief</span></div><span class="page">11 / 11</span></div>
+    </section>
+
+    <!-- ================ FINAL · SIGN-OFF ================ -->
+    <section class="sfin">
+      <h1>Let's <span class="accent">just build</span>.</h1>
+      <div class="sub">There are no stupid questions when one of us writes code and two of us don't. If anything in this deck wasn't clear — ask now. Tomorrow at 10:30 the timer starts.</div>
+      <div class="signoff">
+        <div class="person">Kamila<span class="role">Listener · Demo · Eyes</span></div>
+        <div class="person">Simon<span class="role">Time · Cuts · Ops</span></div>
+        <div class="person">Timur<span class="role">Code · Adapter · Brain</span></div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script>
+  Reveal.initialize({
+    width: 960,
+    height: 540,
+    margin: 0.04,
+    controls: true,
+    progress: true,
+    hash: true,
+    transition: 'slide',
+    backgroundTransition: 'fade',
+    slideNumber: false,
+  });
+</script>
+</body>
+</html>
