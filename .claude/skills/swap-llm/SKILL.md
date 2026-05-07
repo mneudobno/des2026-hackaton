@@ -25,8 +25,20 @@ in `configs/agent.yaml` (`<zgx-a>`, `<vllm-tag-from-/v1/models>`, etc.)
 become live values.
 
 Procedure:
+
+**Precondition (BEFORE step 1):** verify `runs/recon-latest.json` exists.
+If it doesn't, stop and tell the user:
+
+> "I need real ZGX IPs to lock in the config — `runs/recon-latest.json`
+> doesn't exist. Either run `uv run hack recon user@<zgx-a>` (and `-b`)
+> first, OR paste the IPs into the chat ('ZGX-A is X.X.X.X, ZGX-B is
+> Y.Y.Y.Y') and I'll proceed without recon."
+
+Do NOT proceed by reading placeholder `<zgx-a>` from the YAML — that
+silently hits localhost on the laptop instead of the real ZGX.
+
 1. **Read what we know already.** In order:
-   - `runs/recon-latest.json` — for `<zgx-a>` / `<zgx-b>` IPs (machine-authoritative).
+   - `runs/recon-latest.json` — for `<zgx-a>` / `<zgx-b>` IPs (machine-authoritative). If the user pasted IPs in the chat instead, use those.
    - The latest `day-of-brief` skill output (if visible in the conversation) — for the chosen adapter, safety limits, and any audio/video constraints.
    - `docs/DAY_OF_BRIEF.md` — fallback if the brief skill output is gone.
    - `configs/agent.yaml` — current state; you'll write to it, not start fresh.

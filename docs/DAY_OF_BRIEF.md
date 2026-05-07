@@ -6,6 +6,8 @@
 
 ---
 
+
+
 ## Critical confirmations — tick as you hear them
 
 > Listen for each. If a box is still empty when the briefing ends, that's

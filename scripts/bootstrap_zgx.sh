@@ -50,12 +50,19 @@ fi
 VLLM_OK=0
 VLLM_MODELS_JSON="$(curl -fsS --max-time 2 "http://127.0.0.1:${VLLM_PORT}/v1/models" 2>/dev/null || true)"
 if [[ -n "$VLLM_MODELS_JSON" ]]; then
-  VLLM_OK=1
   # Pick the first id from the response if VLLM_MODEL wasn't supplied.
   if [[ -z "${VLLM_MODEL:-}" ]]; then
     VLLM_MODEL="$(printf '%s' "$VLLM_MODELS_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("data") or [{}])[0].get("id",""))' 2>/dev/null || true)"
   fi
-  log "vLLM detected on :${VLLM_PORT} — primary model: ${VLLM_MODEL:-<unknown>}. Skipping Ollama install."
+  # Only declare vLLM ready if /v1/models returned a usable model id.
+  # Endpoint up but unloaded (empty data array) or malformed JSON → fall
+  # through to Ollama rather than misreport "vLLM detected".
+  if [[ -n "${VLLM_MODEL:-}" ]]; then
+    VLLM_OK=1
+    log "vLLM detected on :${VLLM_PORT} — primary model: ${VLLM_MODEL}. Skipping Ollama install."
+  else
+    log "vLLM responded on :${VLLM_PORT} but no usable model id (empty data?). Falling through to Ollama."
+  fi
 fi
 
 if [[ "$VLLM_OK" -eq 1 ]]; then
