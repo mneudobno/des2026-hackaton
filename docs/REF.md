@@ -1,13 +1,13 @@
 # REF — your only doc tomorrow
 
-> Print page 1. Pin it next to the laptop. Everything else is in Claude Code, the TUI, or `docs/HACKATHON_INTRO.md`.
+> Print page 1. Pin it next to the laptop. Everything else is in Claude Code, the TUI, or `docs/DAY_OF_BRIEF.md`.
 
 ---
 
 ## The four tools, in one sentence
 
-1. **Claude Code** — your captain. Tell it where you are; it tells you what to do.
-2. **`hack tui`** — the live dashboard (terminal, no browser).
+1. **Claude Code** — your captain. Tell it the situation; it runs the commands and tells you what to do next.
+2. **`hack tui`** — the live dashboard (terminal, no browser). The one thing you launch yourself.
 3. **`docs/DAY_OF_BRIEF.md`** — type everything organizers say here. Single file for both pre-event intro AND the 10:30 challenge briefing.
 4. **This file** — the cheat sheet. (For deep stack reference: [`docs/TECH_STACK.md`](./TECH_STACK.md) — what each pre-installed tool is, model details, verification punch-list.)
 
@@ -35,43 +35,56 @@ Same file in, two outputs. Run *"process the brief"* first (gives you immediate 
 
 ---
 
-## When to talk to Claude (trigger phrases)
+## What to say to Claude
 
-| Say this | What happens |
+You don't type `hack` commands. You tell Claude the situation and it runs the right command(s) for you. Two tables: time-ordered (the spine of the day) and anytime triggers (use as needed).
+
+### Time-ordered — the spine of the day
+
+| When | Say this | Claude runs / does |
+|---|---|---|
+| 09:30 | "doctor" or "are we good" | `uv run hack doctor` → reports green/red |
+| 10:25 | "recon both ZGX" + the two IPs | `hack recon user@<a>` + `-b`, then summarises and proposes config edit |
+| T+0:00 | "process the brief" | Reads `DAY_OF_BRIEF.md`, produces config edits + first 3 tasks per role |
+| T+0:00 | "boot the ZGX stack" | Runs `bootstrap_zgx.sh`, confirms vLLM is up |
+| T+0:05 | "is the stack alive?" | `hack serve status --host <zgx>` |
+| T+0:10 | "warm it up" | `hack serve warmup --host <zgx>` |
+| T+0:15 | "probe the robot" + adapter name | `hack robot probe --adapter <name>` — **must be green** before anything else |
+| T+0:30 | "calibrate the robot" | `hack calibrate --adapter <name>`, commits `linear_scale` / `angular_scale`. **Don't skip.** |
+| T+0:30 | (you launch this yourself) | Open `uv run hack tui` in a fresh terminal pane. Leave it running. |
+| T+0:45 | "first real-robot run" | `hack agent run --robot <name>` (you may need to launch this yourself in another pane) |
+| any | "smoke test" or "rehearse" | `hack rehearse --scenario obstacle-corridor` (~6 s) |
+| any | "did the prompt change break anything?" | `hack regression` (~10 s) |
+| T+1:30+ | "polish the demo" or "final take" | Invokes the `demo-polish` skill |
+| T+1:55 | "tag submit" | `git tag submit` (you push yourself with `git push --tags`) |
+
+### Anytime triggers (no fixed time)
+
+| Say this | What Claude does |
 |---|---|
-| **"process the brief"** | After typing organizer/briefing into `DAY_OF_BRIEF.md` — produces config edits + first 3 tasks. Run this **first**. |
-| **"make me a runbook"** | Reads same `DAY_OF_BRIEF.md` → writes `RUNBOOK.md` with the full day plan. Optional, once. |
-| **"where am I"** / **"what's next"** | Tells you current phase + next 3 actions. Use any time you're stuck during the build. |
-| **"recon"** / **"what's on the ZGX"** | Summarises `runs/recon-latest.json` + suggests next config edit. |
-| **"swap LLM"** / **"flip to ZGX-B"** / **"fall back to laptop VLM"** | Edits `configs/agent.yaml` + smoke tests the swap. |
-| **"we're behind"** / **"T+1:30"** / **"drop audio"** | Walks the cut-list in order with concrete YAML edits. |
-| **"polish the demo"** / **"final take"** | Last-20-min submission prep. |
-| **"add adapter for X"** | Wires a new robot SDK into `src/hack/robot/`. |
-| **"the agent feels off"** / **"prompts aren't working"** | Replays last trace, proposes prompt edits. |
+| "where am I" / "what's next" | Reads time + git + runs/, tells you current phase + next 3 actions |
+| "make me a runbook" | Reads `DAY_OF_BRIEF.md` → writes `docs/RUNBOOK.md` (full day plan, optional) |
+| "swap LLM" / "swap VLM" / "flip to ZGX-B" / "fall back to laptop VLM" | Edits `configs/agent.yaml` + smoke tests |
+| "we're behind" / "T+1:00" / "T+1:30" / "drop audio" | Walks the cut-list in order with concrete YAML edits |
+| "add adapter for X" | Wires a new robot SDK into `src/hack/robot/` |
+| "the agent feels off" / "prompts aren't working" | Replays last trace, proposes prompt edits |
+| "what's on the ZGX?" | Summarises `runs/recon-latest.json` + suggests next config edit |
 
-If you're not sure what phrase to use — just describe the situation. Claude routes to the right skill.
+If you're unsure of a phrase, **describe the situation in your own words.** Claude routes to the right skill.
 
 ---
 
-## `hack` CLI — the only commands you need
+## What you launch yourself
 
-Order matches the day. Run from the repo root.
+Three things Claude can't drive — you start them in their own terminal pane:
 
-| When | Command | Why |
+| Tool | Command | Why you launch it |
 |---|---|---|
-| 09:30 | `uv run hack doctor` | Sanity. Must be all green except `nvidia-smi`. |
-| 10:25 | `uv run hack recon user@<zgx-a>` (and `-b`) | Snapshot ZGX state into `runs/recon-latest.json`. |
-| T+0:00 | `bash scripts/bootstrap_zgx.sh --role primary` | Detects vLLM at `:8000/v1` first; falls back to Ollama. |
-| T+0:05 | `uv run hack serve status --host <zgx>` | Confirm vLLM or Ollama is responding. |
-| T+0:10 | `uv run hack serve warmup --host <zgx>` | Three tiny prompts to warm caches. |
-| T+0:15 | `uv run hack robot probe --adapter <name>` | Cycles all 6 adapter methods. **Must be green** before any other build work. |
-| T+0:30 | `uv run hack calibrate --adapter <name>` | Measures drift, writes `linear_scale` / `angular_scale`. **Don't skip.** |
-| T+0:30 | `uv run hack tui` | Open the dashboard. Leave it running. |
-| T+0:45 | `uv run hack agent run --robot <name>` | First live run. Latency target: <2 s/tick. |
-| any | `uv run hack rehearse --scenario obstacle-corridor` | Quick agent-loop sanity (5 ticks, ~6 s). |
-| any | `uv run hack regression` | Gate after every prompt change. ~10 s. |
-| T+1:45 | `uv run hack demo record` | Capture submission run + video. |
-| T+1:55 | `git tag submit && git push --tags` | Mark the final state. |
+| **TUI dashboard** | `uv run hack tui` | Interactive (Ctrl+M / Ctrl+R / Ctrl+O / Ctrl+K). Claude can't send keystrokes. |
+| **Live agent loop** (real robot) | `uv run hack agent run --robot <name>` | Long-running; you watch the world map and stop it when needed. |
+| **`git push`** | `git push` | Denied to Claude by your project policy — push happens by you. |
+
+Everything else (doctor, recon, bootstrap, serve, probe, calibrate, rehearse, regression, demo record, git tag) — Claude runs them.
 
 ---
 
