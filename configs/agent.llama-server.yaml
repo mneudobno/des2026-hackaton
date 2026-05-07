@@ -1,0 +1,77 @@
+# llama.cpp `llama-server` fallback profile — used only when vLLM on :8000 is
+# unavailable but llama-server is up on :8080. Same OpenAI-compatible adapter,
+# different port. Note: llama-server is single-threaded — concurrent VLM + LLM
+# calls queue, so we widen the tick budget to compensate.
+#
+# DAYOF: B — see docs/TECH_STACK.md §3.2 for context. Switch to this profile
+# with `cp configs/agent.llama-server.yaml configs/agent.yaml` and edit the
+# IPs.
+
+llm:
+  # DAYOF: B — paste the exact tag llama-server reports at /v1/models.
+  provider: openai-compat
+  model: <gguf-tag-from-/v1/models>
+  base_url: http://<zgx-a>:8080/v1
+  temperature: 0.3
+  max_tokens: 512
+
+vlm:
+  # llama-server multimodal support varies by build; if vision fails, fall
+  # back to laptop Ollama qwen2.5vl:7b (provider: ollama, base_url: http://localhost:11434).
+  provider: openai-compat
+  model: <gguf-tag-from-/v1/models>
+  base_url: http://<zgx-a>:8080/v1
+  frame_fps: 1                  # halved vs vLLM profile — single-threaded server
+  downscale_to: 640             # smaller frames to reduce per-call latency
+  run_mode: every_tick
+
+router:
+  enabled: false
+
+stt:
+  provider: faster-whisper
+  model: large-v3-turbo
+  language: en
+  vad: silero
+
+tts:
+  provider: piper
+  voice: en_US-amy-medium
+  barge_in: true
+
+agent:
+  tick_hz: 3                    # widened from 5; llama-server queues serial requests
+  max_tool_calls_per_turn: 5
+  pipeline_parallel: false
+  system_prompt: |
+    You are a physical-robot agent. You receive observations from cameras,
+    microphones, and robot state, and choose tools to act.
+
+    STRICT RULE: only act when the transcript begins with a `[PLAN] Step X/N: '...'`
+    line. When such a line is present, emit tool calls that execute EXACTLY that step.
+    When there is no `[PLAN] Step` line in the transcript, return `{"calls": []}` —
+    do nothing. Never invent filler behaviour.
+
+    Act decisively within the current step; speak briefly when useful.
+  observation_prompt: |
+    List only what is clearly visible. If uncertain, say "uncertain".
+    Fields: objects (with rough positions), scene summary (<=15 words),
+    one salient event if any, else null.
+
+robot:
+  adapter: mock
+  command_rate_hz: 10
+  tracker:
+    enabled: true
+    type: csrt
+  safety:
+    max_linear_speed: 0.2
+    max_angular_speed: 0.6
+  calibration:
+    linear_scale: 1.0
+    angular_scale: 1.0
+    prefer_forward_walk: true
+
+logging:
+  jsonl_dir: runs/
+  video: true

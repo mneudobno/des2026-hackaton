@@ -78,6 +78,7 @@ At event start, in order:
 ## Key files
 
 - `docs/REF.md` — printable single-page command card (the day-of cheat sheet).
+- `docs/TECH_STACK.md` — comprehensive reference on every tool/model the organizer pre-installed, with a verification punch-list for the first 5 minutes on the ZGX.
 - `docs/PREP_TODO.md` — prep tracker (historical; update only if new work appears).
 - `docs/ARCHITECTURE.md` — component layout + which machine runs what.
 - `docs/DAY_OF_BRIEF.md` — single-file typing target (bulk notes + optional structured fields).

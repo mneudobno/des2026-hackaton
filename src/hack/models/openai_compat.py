@@ -31,6 +31,8 @@ class OpenAICompatLLM(LLMAdapter):
         }
         if json_mode:
             body["response_format"] = {"type": "json_object"}
+        if self.extra_body:
+            body.update(self.extra_body)
 
         async def _call(base: str) -> str:
             url = f"{base}/chat/completions"
@@ -83,6 +85,8 @@ class OpenAICompatVLM(VLMAdapter):
             "max_tokens": 256,
             "response_format": {"type": "json_object"},
         }
+        if self.extra_body:
+            body.update(self.extra_body)
 
         async def _call(base: str) -> str:
             url = f"{base}/chat/completions"

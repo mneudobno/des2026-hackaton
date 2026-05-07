@@ -9,7 +9,7 @@
 1. **Claude Code** — your captain. Tell it where you are; it tells you what to do.
 2. **`hack tui`** — the live dashboard (terminal, no browser).
 3. **`docs/DAY_OF_BRIEF.md`** — type everything organizers say here. Single file for both pre-event intro AND the 10:30 challenge briefing.
-4. **This file** — the cheat sheet.
+4. **This file** — the cheat sheet. (For deep stack reference: [`docs/TECH_STACK.md`](./TECH_STACK.md) — what each pre-installed tool is, model details, verification punch-list.)
 
 ---
 

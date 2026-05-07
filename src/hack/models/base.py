@@ -90,12 +90,18 @@ class LLMAdapter(_HostPool, ABC):
         timeout: float = 60.0,
         api_key_env: str = "",
         base_urls: list[str] | None = None,
+        extra_body: dict | None = None,
     ) -> None:
         self.model = model
         self._init_hosts(base_url, base_urls)
         self.temperature = temperature
         self.timeout = timeout
         self.api_key_env = api_key_env
+        # Provider-specific extras merged into the request body. Used e.g. for
+        # vLLM/Nemotron's `chat_template_kwargs.enable_thinking: false` to
+        # disable reasoning on the planner. Adapters that don't speak HTTP/JSON
+        # are free to ignore this.
+        self.extra_body: dict = extra_body or {}
 
     @abstractmethod
     async def complete(self, prompt: str, *, json_mode: bool = True) -> str:
@@ -128,12 +134,14 @@ class VLMAdapter(_HostPool, ABC):
         timeout: float = 60.0,
         api_key_env: str = "",
         base_urls: list[str] | None = None,
+        extra_body: dict | None = None,
     ) -> None:
         self.model = model
         self._init_hosts(base_url, base_urls)
         self.prompt = prompt
         self.timeout = timeout
         self.api_key_env = api_key_env
+        self.extra_body: dict = extra_body or {}
 
     @abstractmethod
     async def describe(self, image_b64: str, override_prompt: str | None = None) -> str:

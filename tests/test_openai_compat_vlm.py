@@ -120,6 +120,33 @@ def test_make_vlm_resolves_vllm_alias() -> None:
     assert isinstance(adapter, OpenAICompatVLM)
 
 
+def test_describe_merges_extra_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`extra_body` from YAML must land in the request payload — needed to
+    disable Nemotron's reasoning mode via `chat_template_kwargs`."""
+    monkeypatch.setattr("hack.models.openai_compat.httpx.AsyncClient", _FakeClient)
+    adapter = OpenAICompatVLM(
+        model="nvidia/Nemotron-3-Nano-Omni",
+        base_url="http://h:8000/v1",
+        prompt="p",
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    )
+    asyncio.run(adapter.describe("X"))
+    body = _FakeClient.captured["json"]
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+def test_make_vlm_passes_extra_body() -> None:
+    """The factory must thread `extra_body` from cfg into the adapter."""
+    adapter = make_vlm({
+        "provider": "openai-compat",
+        "model": "m",
+        "base_url": "http://h:8000/v1",
+        "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+    })
+    assert isinstance(adapter, OpenAICompatVLM)
+    assert adapter.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
+
+
 def test_describe_failover_rotates_on_connect_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """First host raises ConnectError; the adapter should rotate to host-2."""
     adapter = OpenAICompatVLM(

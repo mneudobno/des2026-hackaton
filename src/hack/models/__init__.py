@@ -71,6 +71,7 @@ def make_llm(cfg: dict[str, Any]) -> LLMAdapter:
         temperature=cfg.get("temperature", 0.3),
         timeout=cfg.get("timeout", 60.0),
         api_key_env=cfg.get("api_key_env", "GEMINI_API_KEY"),
+        extra_body=cfg.get("extra_body") or None,
     )
 
 
@@ -86,6 +87,7 @@ def make_vlm(cfg: dict[str, Any], prompt: str = "") -> VLMAdapter:
         prompt=prompt or cfg.get("prompt", ""),
         timeout=cfg.get("timeout", 60.0),
         api_key_env=cfg.get("api_key_env", "GEMINI_API_KEY"),
+        extra_body=cfg.get("extra_body") or None,
     )
 
 
