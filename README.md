@@ -4,9 +4,9 @@ Pluggable AI-agent runtime for the Data Innovation Summit 2026 robot hackathon (
 
 ## Setup
 
-New to the repo? Read **[`docs/ONBOARDING.md`](docs/ONBOARDING.md)** — it covers prerequisites, one-time setup steps (chmod, macOS camera/mic permissions, local model pulls), and the smoke test sequence.
+For day-of operation, the only doc you need is **[`docs/REF.md`](docs/REF.md)** — a one-page printable command card.
 
-Quick path for someone who already has `uv`, `ollama`, and the relevant OS permissions:
+Quick setup for someone who already has `uv`, `ollama`, and the relevant OS permissions:
 
 ```bash
 uv sync

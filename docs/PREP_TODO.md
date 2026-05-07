@@ -2,7 +2,7 @@
 
 Single source of truth for hackathon prep. Keep this updated as we go — tick items with `[x]`, add notes inline. **Last updated: 2026-04-18.**
 
-See also: [`PRE_EVENT_CHECKLIST.md`](./PRE_EVENT_CHECKLIST.md) (consolidated action list with commands + completion signals), [`DEMO_SCRIPT.md`](./DEMO_SCRIPT.md) (60-sec narration mapped to current implementation).
+See also: [`REF.md`](./REF.md) (day-of command card), [`DEMO_SCRIPT.md`](./DEMO_SCRIPT.md) (60-sec narration), [`_archive/PRE_EVENT_CHECKLIST.md`](./_archive/PRE_EVENT_CHECKLIST.md) (historical T–20d → T+0 action list).
 
 > Status legend: ✅ done · 🟡 in progress · ⏳ blocked/waiting · ⬜ todo · ❌ won't do
 

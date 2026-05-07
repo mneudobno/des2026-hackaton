@@ -520,8 +520,8 @@ def _summarize_recon(data: dict, host: str) -> None:
 # ---------- intake (day-of) ----------
 @app.command()
 def intake(
-    snapshot: bool = typer.Option(True, help="Snapshot DAY_OF_INTAKE.md into runs/ so the answers are versioned."),
-    template: Path = typer.Option(Path("docs/DAY_OF_INTAKE.md"), help="Path to the intake template/doc."),
+    snapshot: bool = typer.Option(True, help="Snapshot DAY_OF_BRIEF.md into runs/ so the answers are versioned."),
+    template: Path = typer.Option(Path("docs/DAY_OF_BRIEF.md"), help="Path to the brief/intake doc."),
 ) -> None:
     """Print the day-of punch-list: machine recon (authoritative) + unfilled intake blanks
     + DAYOF code markers + cut-list triggers.

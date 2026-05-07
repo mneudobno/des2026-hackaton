@@ -2,7 +2,20 @@
 
 Hardware: NVIDIA GB10 Grace Blackwell, 128 GB unified RAM, 1000 TOPS FP4, DGX OS, 200 Gbps networking. Two boxes per team, paired to your laptop.
 
-> For the conceptual overview (what it is, why we designed the repo this way, sources), see [`zgx_overview.md`](./zgx_overview.md). This doc is the operational cheatsheet.
+## What it is
+
+The HP ZGX Nano packages an **NVIDIA DGX Spark reference design** into a desktop chassis. Instead of renting a cloud GPU, you put a compact AI box on a desk, SSH in from a laptop over Ethernet, and run the whole ML stack locally. The killer spec is **128 GB unified memory**: GPU addresses it without PCIe copies, so models up to ~200B params (FP4) fit on one box, and you can chain two via the 200 Gbps fabric. The OS is **NVIDIA DGX OS** (Ubuntu-based, NVIDIA AI stack pre-loaded). Each box exposes inference over an OpenAI-compatible HTTP API — `base_url: http://<zgx>:<port>/v1`.
+
+```
+ ┌──────────┐   200 Gbps   ┌────────────┐
+ │ your Mac │ ───────────▶ │ ZGX Nano A │  ← primary: LLM + VLM (vLLM / NIM / Ollama)
+ │ (agent,  │              └────────────┘
+ │  TUI,    │   200 Gbps   ┌────────────┐
+ │  robot)  │ ───────────▶ │ ZGX Nano B │  ← secondary: STT / TTS / overflow
+ └──────────┘              └────────────┘
+```
+
+No component runs in the cloud during the judged run. That's both a rule ("local AI hardware") and a design win (no latency tail, no API key juggling).
 
 ## First-touch checklist (event day)
 

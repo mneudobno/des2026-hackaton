@@ -1,8 +1,8 @@
 # Day-of decisions matrix
 
-After `docs/DAY_OF_INTAKE.md` is filled, walk this top to bottom. Each section: intake answer → what we change in the repo. **No "it depends" entries** — if an answer doesn't match a row, use the default and note it in the intake's "Open questions".
+After `docs/DAY_OF_BRIEF.md` is filled (and you've said *"process the brief"*), walk this top to bottom. Each section: brief answer → what we change in the repo. **No "it depends" entries** — if an answer doesn't match a row, use the default and note it in the brief's "Open questions" field.
 
-The rule: each row is one commit. Intake facts go in the commit message. Debate kept under 5 minutes total.
+The rule: each row is one commit. Brief facts go in the commit message. Debate kept under 5 minutes total.
 
 ## 1. Robot adapter
 

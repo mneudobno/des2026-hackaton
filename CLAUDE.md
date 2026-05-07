@@ -68,22 +68,20 @@ After every code/config/prompt change: rehearse. After every rehearsal: append o
 At event start, in order:
 
 1. `uv run hack recon user@<zgx-a>` and `uv run hack recon user@<zgx-b>` (also `--local` on each laptop). Produces `runs/recon-latest.json` — the **machine-authoritative** facts (GPU, NIM containers, Ollama state, disk, ports). This output overrides anything hand-written in intake §6.
-2. **Free-text path (default):** one typist writes live notes into `docs/DAY_OF_BRIEF.md` during the intro. By T+0:25 they say *"process the brief"* and the `day-of-brief` skill turns it into a missing-facts list + proposed `configs/agent.yaml` edits + first three tasks per role. Skip the structured `DAY_OF_INTAKE.md` — the skill backfills it.
-3. **Structured path (fallback):** if the team has time, fill `docs/DAY_OF_INTAKE.md` directly. Skip §6; recon covers it.
-4. Walk `docs/DAY_OF_DECISIONS.md` top-to-bottom. Each row maps an intake/brief/recon answer to an explicit repo change.
-5. Run `uv run hack intake` — prints recon summary (authoritative) + unfilled blanks + `# DAYOF:` code punch-list + cut-list triggers.
-6. Open `docs/DAY_OF_TASKS.md` (role × 15-min slice) and start ticking.
+2. **Single-file path:** one typist types into `docs/DAY_OF_BRIEF.md` (bulk-notes section at the top) as organizers speak — pre-event intro and the 10:30 challenge briefing both go in the same file. By T+0:25 they say *"process the brief"* and the `day-of-brief` skill turns it into a missing-facts list + proposed `configs/agent.yaml` edits + first three tasks per role. Optional structured fields below the second `---` get backfilled if requested.
+3. Walk `docs/DAY_OF_DECISIONS.md` top-to-bottom. Each row maps a brief/recon answer to an explicit repo change.
+4. Run `uv run hack intake` — prints recon summary (authoritative) + `# DAYOF:` code punch-list + cut-list triggers.
+5. Open `docs/DAY_OF_TASKS.md` (role × 15-min slice) and start ticking.
 
 **Rule:** `rg "# DAYOF:" -n` is the exhaustive code punch-list. Every touch-point expected to change on the day is tagged. Do not edit the runtime in ways these markers don't cover — that's scope creep under time pressure.
 
 ## Key files
 
-- `docs/PREP_TODO.md` — prep tracker (update as items complete).
-- `docs/PRE_EVENT_CHECKLIST.md` — consolidated T–20d → T+0 actionable list.
+- `docs/REF.md` — printable single-page command card (the day-of cheat sheet).
+- `docs/PREP_TODO.md` — prep tracker (historical; update only if new work appears).
 - `docs/ARCHITECTURE.md` — component layout + which machine runs what.
-- `docs/DAY_OF_BRIEF.md` — free-text notes typed during the intro (primary path).
-- `docs/DAY_OF_INTAKE.md` — structured 12-section intake (fallback path).
-- `docs/DAY_OF_DECISIONS.md` — intake → repo choice matrix.
+- `docs/DAY_OF_BRIEF.md` — single-file typing target (bulk notes + optional structured fields).
+- `docs/DAY_OF_DECISIONS.md` — brief → repo choice matrix.
 - `docs/DAY_OF_TASKS.md` — live task board for the 2-hour build.
 - `docs/DEMO_SCRIPT.md` — 60-second judged-run narration.
 - `src/hack/cli.py` — CLI surface (Typer).
@@ -97,6 +95,9 @@ At event start, in order:
 ## Skills
 
 Use `.claude/skills/` entries when they match — do not reinvent their steps:
+
+**Captain's chair (use anytime)**
+- `hackathon-pilot` — generate a personalized runbook from `docs/HACKATHON_INTRO.md`, OR tell you where you are right now + the next three actions. Triggers: *"guide me through the hackathon"*, *"where am I"*, *"what's next"*, *"make me a runbook"*. Reminds about calibration and the right tests per phase.
 
 **Setup / kickoff**
 - `day-of-brief` — turn `docs/DAY_OF_BRIEF.md` into missing-facts list + config edits + first three tasks. Trigger: *"process the brief"* after the intro.

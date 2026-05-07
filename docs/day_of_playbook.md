@@ -1,9 +1,9 @@
 # Day-of playbook — team "Just Build" @ DIS2026X1, 2026-05-08
 
 > **This file is strategy** (roles, timing, cut-list). The **tactical** day-of files are:
-> - [`DAY_OF_BRIEF.md`](./DAY_OF_BRIEF.md) — free-text notes typed during intro (**primary** path)
-> - [`DAY_OF_INTAKE.md`](./DAY_OF_INTAKE.md) — structured 12-section form (fallback path)
-> - [`DAY_OF_DECISIONS.md`](./DAY_OF_DECISIONS.md) — intake → repo choice matrix
+> - [`REF.md`](./REF.md) — printable command card (the cheat sheet)
+> - [`DAY_OF_BRIEF.md`](./DAY_OF_BRIEF.md) — single-file typing target (bulk notes + optional structured fields)
+> - [`DAY_OF_DECISIONS.md`](./DAY_OF_DECISIONS.md) — brief → repo choice matrix
 > - [`DAY_OF_TASKS.md`](./DAY_OF_TASKS.md) — live task board (tick as you go)
 >
 > **Default flow:** typist writes free-form into `DAY_OF_BRIEF.md` during the intro;

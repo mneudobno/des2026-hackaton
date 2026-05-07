@@ -5,23 +5,43 @@ description: Turn the free-text day-of brief (docs/DAY_OF_BRIEF.md) into actiona
 
 # Day-of brief → decisions + edits
 
-During the 30-minute challenge intro the team typists writes free-form notes
-into `docs/DAY_OF_BRIEF.md`. They have no time to fill the structured
-`DAY_OF_INTAKE.md`. Your job is to bridge the gap in under 5 minutes of
-wall-clock time so the build window starts on code, not on paperwork.
+During the 30-minute challenge intro the typist writes free-form notes
+into the **Bulk notes** section at the top of `docs/DAY_OF_BRIEF.md`.
+The structured fields below the second `---` separator are **optional** —
+treat them as low-priority hints. Your primary input is the bulk free
+text. Bridge the gap in under 5 minutes of wall-clock time so the build
+window starts on code, not on paperwork.
 
-**Precondition:** `docs/DAY_OF_BRIEF.md` exists and has content. If it's empty or
-still the seed template, stop and tell the user to write into it first.
+**Precondition:** the **Bulk notes** section in `docs/DAY_OF_BRIEF.md`
+contains content (anything more than whitespace and the comment hint).
+If it's empty, stop and tell the user to type into it first. The
+optional structured fields can be empty — that's fine.
 
 ## Inputs to read (in order)
 
-1. `docs/DAY_OF_BRIEF.md` — the free-text brief.
-2. `docs/DAY_OF_INTAKE.md` — the 12-section target shape.
-3. `docs/DAY_OF_DECISIONS.md` — the intake → repo-edit matrix.
-4. `docs/DAY_OF_TASKS.md` — the role × 15-min grid.
-5. `runs/recon-latest.json` if present — machine-authoritative facts about
-   the two ZGX boxes. Trust it over anything typed in the brief about §6.
-6. `configs/agent.yaml` — current config; you will propose diffs, not rewrites.
+1. `docs/DAY_OF_BRIEF.md` — read the **Bulk notes** section as primary
+   input. Then check the **Optional structured fields** below the second
+   `---`; treat any non-empty field as a high-confidence supplement.
+2. `docs/DAY_OF_DECISIONS.md` — the brief → repo-edit matrix.
+3. `docs/DAY_OF_TASKS.md` — the role × 15-min grid.
+4. `runs/recon-latest.json` if present — machine-authoritative facts about
+   the two ZGX boxes. Trust it over anything typed in the brief about ZGX state.
+5. `configs/agent.yaml` — current config; you will propose diffs, not rewrites.
+
+## Reorganise bulk notes into structured fields (offer, don't auto-apply)
+
+After producing the five-section response below, **offer** to reorganise
+the bulk notes into the optional structured fields in the same file:
+
+> "I can also rewrite your bulk notes into the structured fields below
+> (Schedule / Robot / Sensors / etc.) — useful as a clean reference. Reply
+> 'yes' or 'restructure' to apply."
+
+If the user agrees, edit `docs/DAY_OF_BRIEF.md` so each structured field
+is populated from the bulk notes. Keep the bulk notes section intact —
+the structured version is a derived view, not a replacement. Don't
+fabricate values: if a field has no source in the bulk notes, leave its
+HTML comment placeholder alone.
 
 ## Output contract — produce ALL FIVE sections in one response
 

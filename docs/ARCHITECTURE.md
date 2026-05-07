@@ -330,8 +330,8 @@ surfaces them as alerts, and the demo narration has language for each
 ---
 
 See also:
+- [`REF.md`](./REF.md) — printable command card (the cheat sheet)
 - [`day_of_playbook.md`](./day_of_playbook.md) — schedule + cut-list
 - [`DEMO_SCRIPT.md`](./DEMO_SCRIPT.md) — 60-second narration per component
-- [`zgx_overview.md`](./zgx_overview.md) — hardware conceptual intro
-- [`zgx_notes.md`](./zgx_notes.md) — NIM / Ollama / Riva operational cheatsheet
-- [`prior_art.md`](./prior_art.md) — references lifted from NVIDIA + HF
+- [`zgx_notes.md`](./zgx_notes.md) — hardware overview + vLLM/Ollama operational cheatsheet
+- [`_archive/prior_art.md`](./_archive/prior_art.md) — pre-event research references

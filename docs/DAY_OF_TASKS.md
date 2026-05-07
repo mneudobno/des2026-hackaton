@@ -4,16 +4,17 @@
 
 Legend: **R** = Robot lead · **B** = Brain lead · **D** = Demo lead · **(all)** = sync everyone.
 
-Roles are assigned in `docs/DAY_OF_INTAKE.md` §11 at T+0:25 and do not change after.
+Roles are assigned by T+0:25 (during/right after the briefing) and do not change after.
 
 ---
 
 ## T+0:00 — Reconnaissance (all together, 30 min)
 
-- [ ] (all) Fill `docs/DAY_OF_INTAKE.md` live during the challenge intro
-- [ ] (all) `uv run hack recon user@<zgx-a-ip>` and `uv run hack recon user@<zgx-b-ip>` — populates intake §6 automatically and saves `runs/recon-latest.json`
-- [ ] (all) 5 min silent re-read of the intake, 5 min discuss
-- [ ] (all) Assign roles (intake §11) and commit one-sentence primary behaviour (intake §8)
+- [ ] (all) Type live into `docs/DAY_OF_BRIEF.md` (bulk-notes section) during the challenge intro
+- [ ] (all) `uv run hack recon user@<zgx-a-ip>` and `uv run hack recon user@<zgx-b-ip>` — saves `runs/recon-latest.json`
+- [ ] (all) Say *"process the brief"* — `day-of-brief` skill produces config edits + first 3 tasks
+- [ ] (all) 5 min silent re-read, 5 min discuss
+- [ ] (all) Assign roles (R / B / D) and commit one-sentence primary behaviour
 - [ ] (all) Walk `docs/DAY_OF_DECISIONS.md` top to bottom; commit the edits it produces
 
 ## T+0:15 — Parallel setup
