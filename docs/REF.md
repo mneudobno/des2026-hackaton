@@ -35,6 +35,75 @@ Same file in, two outputs. Run *"process the brief"* first (gives you immediate 
 
 ---
 
+## Physical setup — the first 10 minutes
+
+### Topology (mental model)
+
+```
+   [Mac mic + webcam]                 [Robot]
+           ↓                            ↓ ↑
+     ┌────────────┐  Ethernet   ┌──────────────┐
+     │  laptop    │ ←─────────→ │  ZGX-A       │
+     │ (agent +   │             │  vLLM :8000  │
+     │  TUI +     │  Ethernet   ├──────────────┤
+     │  adapter)  │ ←─────────→ │  ZGX-B       │
+     └────────────┘             │  STT/overflow│
+                                └──────────────┘
+```
+
+**Laptop is the conductor.** It runs the agent loop, talks HTTP to the ZGX boxes, drives the robot via SDK. The ZGX never touches the robot directly — they're just remote brains.
+
+### In your bag (check before leaving home)
+
+- [ ] Laptop + USB-C charger (≥ 100 W if heavy)
+- [ ] **USB-C → Ethernet adapter** (Mac has no RJ45; without this you're WiFi-only)
+- [ ] Phone fully charged (video-backup demo if everything dies)
+- [ ] Earbuds (loud venue, mic test)
+- [ ] Snack + water
+- [ ] Optional: USB-C hub (if the desk's only ports are USB-A)
+
+### Steps when you sit down (10:20)
+
+1. **Plug in.** Laptop charger to outlet. Open lid.
+2. **Look at the desk.** Note what's there:
+   - Power outlets — laptop charger goes here
+   - Ethernet cable on the desk? Plug it into laptop (via USB-C → RJ45 adapter)
+   - ZGX boxes should be powered on already (organizers boot them) — green/blue LEDs on the front
+   - Robot: same desk, separate cage, or different room? Note it.
+3. **Note the ZGX IPs.** They're handed out via:
+   - Sticky note on the box, OR
+   - Sign at the station, OR
+   - Verbal handoff during 10:30 briefing
+   Write them on the printed copy of this doc so you don't lose them.
+4. **Network sanity** (Terminal):
+   ```
+   ping -c 2 <zgx-a-ip>      # should respond in <5ms on cabled Ethernet
+   ssh user@<zgx-a-ip>       # organizer should have pre-loaded your key
+   ```
+   If `ping` fails: WiFi vs cable issue. Try the other interface. Ask on-site support if both fail.
+5. **Hand off to Claude.** From here on, you say things, Claude runs commands. See the next section.
+
+### When the physical setup fights back
+
+| Symptom | First thing to try |
+|---|---|
+| ZGX power LED is off | Don't touch — ask on-site HP/NVIDIA support. They booted them; they fix them. |
+| Ethernet cable on desk but laptop says "no link" | Reseat the USB-C → RJ45 adapter (these die from heat). Try the other ZGX's port. |
+| `ping` works but `ssh` rejects key | Organizer didn't load your key yet. Ask. **Don't paste a password into a shared box.** |
+| WiFi only, latency feels bad | Live with it for now; cut #1/#2 later if needed. WiFi 7 is OK for SSH but bottlenecks inference. |
+| Robot has no network address — it's a USB device | Plug into laptop. The adapter (HTTP / lerobot / serial) determines what to do; the brief tells you which. |
+| Robot is in a different room from your desk | Ask: can you see it during the build? You'll need a line-of-sight to debug. |
+| Two laptops on the desk (you brought one, they provided one) | Use yours. Theirs may be configured for a different challenge or kicker demo. |
+
+### What NOT to do
+
+- **Don't `apt install` anything on the ZGX.** DGX OS is curated; live in containers or the user venv only.
+- **Don't unplug things mid-build.** Network blip = mid-tick failure = lost cycles.
+- **Don't trust "the robot is on" if it's not moving when you cycle a probe.** Always run `hack robot probe` before assuming.
+- **Don't worry about pretty.** Wires on the desk are fine. Fight wedge problems with `hack`, not zip ties.
+
+---
+
 ## What to say to Claude
 
 You don't type `hack` commands. You tell Claude the situation and it runs the right command(s) for you. Two tables: time-ordered (the spine of the day) and anytime triggers (use as needed).
