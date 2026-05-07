@@ -94,19 +94,19 @@ _DECOMPOSE_SYSTEM_PROMPT = (
     "  remember(key, value)   — stash a fact.\n"
     "  set_joint(name, value) — named joint target.\n"
     "\n"
-    "PER-TICK SAFETY LIMITS: |dx|,|dy| <= 0.2 m and |dtheta| <= 0.6 rad per step.\n"
+    "PER-TICK SAFETY LIMITS: |dx|,|dy| <= {MAX_LIN} m and |dtheta| <= {MAX_ANG} rad per step.\n"
     "\n"
     "ANGLE MATH (follow exactly):\n"
     "  - N degrees = N × π/180 radians.\n"
-    "  - Steps needed = ceil(radians / 0.6).\n"
-    "  - 90° = 1.571 rad → ceil(1.571/0.6) = 3 steps of 0.524 rad each.\n"
-    "  - 180° = 3.142 rad → ceil(3.142/0.6) = 6 steps of 0.524 rad each.\n"
-    "  - 360° = 6.283 rad → ceil(6.283/0.6) = 11 steps of 0.571 rad each.\n"
-    "  DO NOT guess. COMPUTE steps = ceil(target_radians / 0.6), then per_step = target / steps.\n"
+    "  - Steps needed = ceil(radians / {MAX_ANG}).\n"
+    "  - 90° = 1.571 rad → ceil(1.571/{MAX_ANG}) steps.\n"
+    "  - 180° = 3.142 rad → ceil(3.142/{MAX_ANG}) steps.\n"
+    "  - 360° = 6.283 rad → ceil(6.283/{MAX_ANG}) steps.\n"
+    "  DO NOT guess. COMPUTE steps = ceil(target_radians / {MAX_ANG}), then per_step = target / steps.\n"
     "\n"
     "DEFAULT MAGNITUDES (when user does NOT specify a distance or angle):\n"
-    "  - 'move forward' / 'move back' / 'step left' → 1 step of 0.2 m. NOT 5 steps.\n"
-    "  - 'turn left' / 'turn right' (no angle given) → 1 step of 0.6 rad (~34°).\n"
+    "  - 'move forward' / 'move back' / 'step left' → 1 step of {MAX_LIN} m. NOT 5 steps.\n"
+    "  - 'turn left' / 'turn right' (no angle given) → 1 step of {MAX_ANG} rad.\n"
     "  - Only emit multiple steps when the user gives a specific distance or angle.\n"
     "\n"
     "GEOMETRY — 'walk a circle' / 'make a circle':\n"
@@ -154,6 +154,7 @@ async def decompose(
     planner: "OllamaPlanner",
     max_steps: int = 12,
     pose: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    safety: dict[str, float] | None = None,
 ) -> list[PlanStep]:
     """Ask the planner LLM to break `cue` into ordered sub-steps.
 
@@ -172,6 +173,9 @@ async def decompose(
     return_dx = (-x) * _m.cos(th) + (-y) * _m.sin(th)
     return_dy = -(-x) * _m.sin(th) + (-y) * _m.cos(th)
 
+    _safety = safety or {}
+    max_lin = float(_safety.get("max_linear_speed", 0.2))
+    max_ang = float(_safety.get("max_angular_speed", 0.6))
     prompt = (
         _DECOMPOSE_SYSTEM_PROMPT.format(
             MAX_STEPS=max_steps,
@@ -179,6 +183,7 @@ async def decompose(
             POSE_THETA_DEG=_m.degrees(th),
             DIST_FROM_ORIGIN=dist,
             RETURN_DX=return_dx, RETURN_DY=return_dy,
+            MAX_LIN=max_lin, MAX_ANG=max_ang,
         )
         + f"\n\nUSER INSTRUCTION: {cue!r}"
     )
@@ -381,6 +386,7 @@ def split_oversized_move(step: "PlanStep", safety: dict[str, float]) -> list["Pl
     if n == 1:
         return [step]
     rationale = step.tool.get("rationale") or ""
+    meta = step.tool.get("meta")  # preserve flags like from_astar across splits
     out: list[PlanStep] = []
     for i in range(n):
         chunk_args = {
@@ -388,13 +394,16 @@ def split_oversized_move(step: "PlanStep", safety: dict[str, float]) -> list["Pl
             "dy": dy / n,
             "dtheta": dtheta / n,
         }
+        tool: dict[str, Any] = {
+            "name": "move",
+            "args": chunk_args,
+            "rationale": rationale or "auto-split safety chunk",
+        }
+        if meta is not None:
+            tool["meta"] = dict(meta)
         out.append(PlanStep(
             text=f"{step.text} [{i+1}/{n}]",
-            tool={
-                "name": "move",
-                "args": chunk_args,
-                "rationale": rationale or "auto-split safety chunk",
-            },
+            tool=tool,
         ))
     return out
 

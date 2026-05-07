@@ -72,6 +72,20 @@ class Scenario:
     evaluate: Callable[["VirtualWorldRobot", Counter], tuple[bool, str]] | None = None
     # Optional scenario-specific text appended to the system prompt.
     system_prompt_suffix: str = ""
+    # World bounds: robot position is clamped to [-world_radius, +world_radius].
+    world_radius: float = 1.0
+    # Trajectory-efficiency gate (used by efficiency_evaluate). 0 = don't grade.
+    # efficiency = optimal_length / actual_path_length; must be >= min_efficiency.
+    min_efficiency: float = 0.0
+    # Lower bound on the path length the robot *must* travel. Defaults to the
+    # straight-line distance from (0,0) to the goal. Override when obstacles
+    # make the straight line infeasible (e.g. the U-trap horseshoe).
+    optimal_length: float | None = None
+    # Progress watchdog: end the run if distance-to-goal hasn't improved by at
+    # least `stall_progress_epsilon` metres for this many ticks. 0 = disabled.
+    # `max_ticks` still applies as an absolute ceiling.
+    stall_timeout_ticks: int = 30
+    stall_progress_epsilon: float = 0.02
 
     def initial_poses(self) -> dict[str, tuple[float, float]]:
         return {o.name: (o.x, o.y) for o in self.objects}
@@ -104,33 +118,61 @@ class VirtualWorldRobot(RobotAdapter):
         x, y, th = self.pose
         ix = x + dx * math.cos(th) - dy * math.sin(th)
         iy = y + dx * math.sin(th) + dy * math.cos(th)
-        # Obstacle collision detection — clamp to just outside the obstacle.
-        for obj in self.objects.values():
-            if not obj.is_obstacle:
-                continue
-            d = _dist((ix, iy), (obj.x, obj.y))
-            min_clearance = obj.radius + ROBOT_RADIUS
-            if d < min_clearance:
-                self.collision_events.append({
-                    "tick": self.tick,
-                    "obstacle": obj.name,
-                    "intended": [ix, iy],
-                    "obstacle_pos": [obj.x, obj.y],
-                    "distance": d,
-                    "min_clearance": min_clearance,
-                })
-                # Push robot back to just outside the obstacle.
-                if d > 0.001:
-                    scale = min_clearance / d
-                    ix = obj.x + (ix - obj.x) * scale
-                    iy = obj.y + (iy - obj.y) * scale
-                else:
-                    ix, iy = x, y  # don't move at all
+        # Swept-path collision — sample the segment from (x,y) to (ix,iy) so a large
+        # single step can't teleport through an obstacle. On the first sample that
+        # enters any obstacle's clearance zone we stop the robot just before it.
+        seg_len = math.hypot(ix - x, iy - y)
+        obstacles = [o for o in self.objects.values() if o.is_obstacle]
+        sx, sy = x, y
+        if seg_len > 1e-6 and obstacles:
+            # Step along the path at ~half the robot radius (or finer for tiny segs).
+            sample_step = max(0.02, min(ROBOT_RADIUS * 0.5, seg_len / 2.0))
+            n_samples = max(1, int(math.ceil(seg_len / sample_step)))
+            ux, uy = (ix - x) / seg_len, (iy - y) / seg_len
+            blocked = False
+            for i in range(1, n_samples + 1):
+                t = min(seg_len, i * sample_step)
+                px, py = x + ux * t, y + uy * t
+                hit = None
+                for obj in obstacles:
+                    d = _dist((px, py), (obj.x, obj.y))
+                    clearance = obj.radius + ROBOT_RADIUS
+                    if d < clearance:
+                        hit = (obj, clearance)
+                        break
+                if hit is not None:
+                    obj, clearance = hit
+                    # Back off along the travel direction until we're clear.
+                    back_t = t
+                    while back_t > 0:
+                        back_t -= sample_step * 0.5
+                        bx, by = x + ux * back_t, y + uy * back_t
+                        if _dist((bx, by), (obj.x, obj.y)) >= clearance:
+                            sx, sy = bx, by
+                            break
+                    else:
+                        sx, sy = x, y
+                    self.collision_events.append({
+                        "tick": self.tick,
+                        "obstacle": obj.name,
+                        "intended": [ix, iy],
+                        "stopped_at": [round(sx, 4), round(sy, 4)],
+                        "obstacle_pos": [obj.x, obj.y],
+                        "travelled": round(_dist((x, y), (sx, sy)), 4),
+                        "requested": round(seg_len, 4),
+                    })
+                    blocked = True
+                    break
+            if not blocked:
+                sx, sy = ix, iy
+        else:
+            sx, sy = ix, iy
         # World bounds clamp.
-        nx = max(-1.0, min(1.0, ix))
-        ny = max(-1.0, min(1.0, iy))
+        wr = self.scenario.world_radius
+        nx = max(-wr, min(wr, sx))
+        ny = max(-wr, min(wr, sy))
         nth = (th + dtheta + math.pi) % (2 * math.pi) - math.pi
-        if nx != ix or ny != iy:
+        if nx != sx or ny != sy:
             self.clamp_events.append({
                 "tick": self.tick,
                 "requested": [dx, dy, dtheta],

@@ -1,20 +1,29 @@
 # Day-of playbook — team "Just Build" @ DIS2026X1, 2026-05-08
 
 > **This file is strategy** (roles, timing, cut-list). The **tactical** day-of files are:
-> - [`DAY_OF_INTAKE.md`](./DAY_OF_INTAKE.md) — blank form filled during intro
+> - [`DAY_OF_BRIEF.md`](./DAY_OF_BRIEF.md) — free-text notes typed during intro (**primary** path)
+> - [`DAY_OF_INTAKE.md`](./DAY_OF_INTAKE.md) — structured 12-section form (fallback path)
 > - [`DAY_OF_DECISIONS.md`](./DAY_OF_DECISIONS.md) — intake → repo choice matrix
 > - [`DAY_OF_TASKS.md`](./DAY_OF_TASKS.md) — live task board (tick as you go)
 >
-> Run `uv run hack intake` after the challenge intro for a single-screen punch-list.
+> **Default flow:** typist writes free-form into `DAY_OF_BRIEF.md` during the intro;
+> at T+0:25 say *"process the brief"* and Claude Code runs the `day-of-brief`
+> skill to produce missing-facts list + config edits + first three tasks.
+> `uv run hack intake` still works as a secondary check against `runs/recon-latest.json`.
 
-## Schedule (event-given)
+## Schedule (event-given, organizer email 2026-05-05)
 
 | Time | Block |
 |------|-------|
-| 10:30–11:00 | Intro + challenge reveal |
-| 11:00–13:00 | **2-hour build window** |
-| 13:00–13:30 | Break / evaluation |
-| 13:30–14:30 | Awards |
+| 10:20 | Approach main stage **P1** for seat assignment |
+| 10:30–10:50 | Kickoff + challenge briefing & technical setup |
+| 10:50–13:00 | **Build window (~2h10min)** |
+| 13:00 | **Submission deadline** |
+| 14:00 | Jury deliberation & stage assembly |
+| 14:10 | Winner announcement & showcase |
+
+**Provided on the ZGX Nano boxes:** Nemotron, vLLM, llama.cpp, OpenCode pre-installed.
+**Models available:** NVIDIA Nemotron 3 Nano Omni (multimodal) + Qwen 3.6 35B A3B (LLM).
 
 ## Roles (team of 3)
 
@@ -40,7 +49,7 @@ Candidates: **Timur**, **Kamila**, **Simon**. Roles are sticky once set — do n
 | 1:30 | All: behavior must work end-to-end *now*. If not, invoke cut-list. |
 | 1:45 | D: record 2–3 clean takes. B: lock prompts. R: do not change adapter. |
 | 1:55 | All: freeze. `git tag submit`. Final demo capture. Print judge handoff sheet. |
-| 2:00 | Submit. |
+| 2:00 | Submit (deadline 13:00 = T+2:10 — extra 10 min cushion). |
 
 ## Cut-list (apply ruthlessly)
 

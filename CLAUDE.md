@@ -19,7 +19,7 @@
 
 - Ollama runs as a Homebrew background service: `brew services start ollama`. Endpoint is `http://127.0.0.1:11434`.
 - Default Mac models: `qwen2.5:7b` (LLM) and `qwen2.5vl:7b` (VLM — no dash in the Ollama tag, has dash in NIM containers). Both are wired into `configs/agent.yaml`.
-- Day-of swap: change `model:` in `configs/agent.yaml` to `qwen2.5:14b-instruct` and point `base_url` at the ZGX IP. No code changes required.
+- Day-of swap: ZGX boxes ship with **vLLM + llama.cpp + Nemotron + OpenCode pre-installed** (organizer email 2026-05-05). Provided models: **NVIDIA Nemotron 3 Nano Omni** (multimodal — single endpoint can serve both LLM and VLM roles) and **Qwen 3.6 35B A3B** (LLM, MoE-style). Switch `provider: openai-compat`, set `model:` to the exact tag vLLM serves (confirm at event start), point `base_url` at `http://<zgx-a>:8000/v1`. No code changes required.
 
 ## Architectural commitments (do not violate)
 
@@ -68,19 +68,24 @@ After every code/config/prompt change: rehearse. After every rehearsal: append o
 At event start, in order:
 
 1. `uv run hack recon user@<zgx-a>` and `uv run hack recon user@<zgx-b>` (also `--local` on each laptop). Produces `runs/recon-latest.json` — the **machine-authoritative** facts (GPU, NIM containers, Ollama state, disk, ports). This output overrides anything hand-written in intake §6.
-2. Fill `docs/DAY_OF_INTAKE.md` live during the 30-min challenge intro (all three teammates). Skip §6; recon covers it.
-3. Walk `docs/DAY_OF_DECISIONS.md` top-to-bottom. Each row maps an intake-or-recon answer to an explicit repo change.
-4. Run `uv run hack intake` — prints recon summary (authoritative) + unfilled blanks + `# DAYOF:` code punch-list + cut-list triggers.
-5. Open `docs/DAY_OF_TASKS.md` (role × 15-min slice) and start ticking.
+2. **Free-text path (default):** one typist writes live notes into `docs/DAY_OF_BRIEF.md` during the intro. By T+0:25 they say *"process the brief"* and the `day-of-brief` skill turns it into a missing-facts list + proposed `configs/agent.yaml` edits + first three tasks per role. Skip the structured `DAY_OF_INTAKE.md` — the skill backfills it.
+3. **Structured path (fallback):** if the team has time, fill `docs/DAY_OF_INTAKE.md` directly. Skip §6; recon covers it.
+4. Walk `docs/DAY_OF_DECISIONS.md` top-to-bottom. Each row maps an intake/brief/recon answer to an explicit repo change.
+5. Run `uv run hack intake` — prints recon summary (authoritative) + unfilled blanks + `# DAYOF:` code punch-list + cut-list triggers.
+6. Open `docs/DAY_OF_TASKS.md` (role × 15-min slice) and start ticking.
 
 **Rule:** `rg "# DAYOF:" -n` is the exhaustive code punch-list. Every touch-point expected to change on the day is tagged. Do not edit the runtime in ways these markers don't cover — that's scope creep under time pressure.
 
 ## Key files
 
 - `docs/PREP_TODO.md` — prep tracker (update as items complete).
-- `docs/DAY_OF_INTAKE.md` — blank-form intake (fill during intro).
+- `docs/PRE_EVENT_CHECKLIST.md` — consolidated T–20d → T+0 actionable list.
+- `docs/ARCHITECTURE.md` — component layout + which machine runs what.
+- `docs/DAY_OF_BRIEF.md` — free-text notes typed during the intro (primary path).
+- `docs/DAY_OF_INTAKE.md` — structured 12-section intake (fallback path).
 - `docs/DAY_OF_DECISIONS.md` — intake → repo choice matrix.
 - `docs/DAY_OF_TASKS.md` — live task board for the 2-hour build.
+- `docs/DEMO_SCRIPT.md` — 60-second judged-run narration.
 - `src/hack/cli.py` — CLI surface (Typer).
 - `src/hack/robot/base.py` — adapter contract.
 - `src/hack/agent/runtime.py` — event loop (leave alone day-of).
@@ -93,6 +98,7 @@ At event start, in order:
 
 Use `.claude/skills/` entries when they match — do not reinvent their steps:
 
+- `day-of-brief` — turn `docs/DAY_OF_BRIEF.md` into missing-facts list + config edits + first three tasks. Trigger: *"process the brief"* after the intro.
 - `robot-adapter` — wiring a new robot SDK
 - `agent-prompt` — prompt iteration via replay
 - `zgx-bootstrap` — bringing up the ZGX Nano serving stack

@@ -18,22 +18,26 @@ class GeminiLLM(LLMAdapter):
         key = os.environ.get(self.api_key_env or "GEMINI_API_KEY", "")
         if not key:
             return f'{{"error":"{self.api_key_env or "GEMINI_API_KEY"} not set"}}'
-        base = self.base_url or _DEFAULT_BASE
-        url = f"{base.rstrip('/')}/models/{self.model}:generateContent"
         body: dict[str, object] = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": self.temperature},
         }
         if json_mode:
             body["generationConfig"]["responseMimeType"] = "application/json"
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            r = await client.post(url, json=body, headers={"X-goog-api-key": key})
-            r.raise_for_status()
-            data = r.json()
-        try:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError, TypeError):
-            return json.dumps(data)[:400]
+
+        async def _call(base: str) -> str:
+            base = base or _DEFAULT_BASE
+            url = f"{base.rstrip('/')}/models/{self.model}:generateContent"
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                r = await client.post(url, json=body, headers={"X-goog-api-key": key})
+                r.raise_for_status()
+                data = r.json()
+            try:
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+            except (KeyError, IndexError, TypeError):
+                return json.dumps(data)[:400]
+
+        return await self._request(_call)
 
 
 class GeminiVLM(VLMAdapter):
@@ -44,8 +48,6 @@ class GeminiVLM(VLMAdapter):
         key = os.environ.get(self.api_key_env or "GEMINI_API_KEY", "")
         if not key:
             return f'{{"error":"{self.api_key_env or "GEMINI_API_KEY"} not set","scene":""}}'
-        base = self.base_url or _DEFAULT_BASE
-        url = f"{base.rstrip('/')}/models/{self.model}:generateContent"
         prompt = override_prompt if override_prompt is not None else self.prompt
         body = {
             "contents": [{
@@ -59,11 +61,17 @@ class GeminiVLM(VLMAdapter):
                 "responseMimeType": "application/json",
             },
         }
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            r = await client.post(url, json=body, headers={"X-goog-api-key": key})
-            r.raise_for_status()
-            data = r.json()
-        try:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError, TypeError):
-            return json.dumps(data)[:400]
+
+        async def _call(base: str) -> str:
+            base = base or _DEFAULT_BASE
+            url = f"{base.rstrip('/')}/models/{self.model}:generateContent"
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                r = await client.post(url, json=body, headers={"X-goog-api-key": key})
+                r.raise_for_status()
+                data = r.json()
+            try:
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+            except (KeyError, IndexError, TypeError):
+                return json.dumps(data)[:400]
+
+        return await self._request(_call)

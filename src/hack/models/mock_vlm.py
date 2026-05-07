@@ -26,7 +26,7 @@ class MockVLM(VLMAdapter):
     name = "mock"
 
     def __init__(self, world_robot: "VirtualWorldRobot" | None = None, **kwargs: Any) -> None:
-        super().__init__(model="mock", **{k: v for k, v in kwargs.items() if k in ("base_url", "prompt", "timeout", "api_key_env")})
+        super().__init__(model="mock", **{k: v for k, v in kwargs.items() if k in ("base_url", "base_urls", "prompt", "timeout", "api_key_env")})
         self.world = world_robot
 
     async def describe(self, image_b64: str, override_prompt: str | None = None) -> str:

@@ -18,22 +18,26 @@ Then: `configs/agent.yaml` → `robot.adapter:` set to the chosen name. Run `uv 
 
 > All "Intake §6" references below read from `runs/recon-latest.json` (machine-authoritative) if present, falling back to what was hand-typed. `hack intake` prints the effective values on top.
 
-## 2. LLM (planner)
+## 2. LLM (planner) + VLM (single multimodal endpoint when possible)
 
-| Intake §6 "Software preinstalled" | Action | File to edit |
+The organizer email confirms vLLM is pre-installed on ZGX with **Nemotron 3 Nano Omni** (multimodal — fills both LLM and VLM roles) and **Qwen 3.6 35B A3B** (text-only). First step on the day: `curl http://<zgx>:8000/v1/models` to read the exact tags.
+
+| Intake §6 "Software preinstalled" / vLLM probe | Action | File to edit |
 |---|---|---|
-| NIM containers include Nemotron | `llm.provider: openai-compat`, `model: nvidia/Nemotron-3-Nano-30B-A3B`, `base_url: http://<zgx-a>:8000/v1` | `configs/agent.yaml` |
-| NIM containers include generic OpenAI-compat | Same as above, substitute model + port from `docker ps` | `configs/agent.yaml` |
-| No NIM, Ollama only | `llm.provider: ollama`, `model: qwen2.5:14b-instruct`, `base_url: http://<zgx-a>:11434`. Pull happens in `bootstrap_zgx.sh`. | `configs/agent.yaml` |
+| vLLM serves Nemotron Omni (multimodal) | Set BOTH `llm` and `vlm` to `provider: openai-compat`, `model: <omni tag from /v1/models>`, `base_url: http://<zgx-a>:8000/v1`. One endpoint serves both roles. | `configs/agent.yaml` |
+| vLLM serves Qwen A3B only (no usable VLM on ZGX) | `llm.provider: openai-compat`, `model: <qwen tag>`, `base_url: http://<zgx-a>:8000/v1`. Keep `vlm.provider: ollama`, `model: qwen2.5vl:7b` on the laptop (extra hop, ~500ms). | `configs/agent.yaml` |
+| vLLM down, NIM containers present | `provider: openai-compat`, `model: <id from docker ps>`, `base_url: http://<zgx-a>:<nim-port>/v1` | `configs/agent.yaml` |
+| vLLM and NIM both down, Ollama only | `llm.provider: ollama`, `model: qwen2.5:14b-instruct`, `base_url: http://<zgx-a>:11434`. `vlm.provider: ollama`, `model: qwen2.5vl:7b`. Pull happens in `bootstrap_zgx.sh`. | `configs/agent.yaml` |
 | Nothing installed (worst case) | Ollama fallback as above — our bootstrap pulls it | — |
 
-## 3. VLM
+## 3. VLM frame settings
+
+VLM provider is decided in §2 above. This row is just about the frame stream:
 
 | Intake §3 morphology + §4 cameras | Action | File to edit |
 |---|---|---|
-| Robot has usable camera AND NIM present | `vlm.model: nvidia/Nemotron-Nano-12B-v2-VL`, point at NIM endpoint. Camera source = robot feed (see §5 below). | `configs/agent.yaml` |
-| Robot has camera, no NIM | `vlm.model: qwen2.5vl:7b`, Ollama. | `configs/agent.yaml` |
-| Robot has no camera — host webcam watches the scene | Same as above; `sensors/camera.py` stays on device 0. | `configs/agent.yaml` |
+| Robot has usable camera | Camera source = robot feed (see §5 below). Default `frame_fps: 2`, `downscale_to: 768`. | `configs/agent.yaml` |
+| Robot has no camera — host webcam watches the scene | `sensors/camera.py` stays on device 0; otherwise unchanged. | `configs/agent.yaml` |
 | Vision is irrelevant to the task | Set `vlm.frame_fps: 0` to disable. Saves ~30% of runtime. | `configs/agent.yaml` |
 
 ## 4. Router (intent triage)

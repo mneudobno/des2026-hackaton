@@ -1,20 +1,25 @@
-# Day-of ZGX Nano + NVIDIA NIM profile.
+# Day-of ZGX Nano + vLLM/NIM profile.
+# Per organizer email 2026-05-05: vLLM + Nemotron + llama.cpp + OpenCode are
+# pre-installed on ZGX. Confirm exact tags at event start with:
+#   curl http://<zgx-a>:8000/v1/models
 # DAYOF: R — fill in <zgx-a> and <zgx-b> IPs from `hack recon`.
 
 llm:
-  # DAYOF: B — confirm NIM container name with `docker ps` output from recon.
+  # DAYOF: B — replace model with the tag from /v1/models response.
   provider: openai-compat
-  model: nvidia/Nemotron-3-Nano-30B-A3B
+  model: nvidia/Nemotron-3-Nano-Omni
   base_url: http://<zgx-a>:8000/v1
   temperature: 0.3
   max_tokens: 512
   api_key_env: NIM_API_KEY
 
 vlm:
-  # DAYOF: B — if NIM VLM container present, use openai-compat; else Ollama.
-  provider: ollama
-  model: qwen2.5vl:7b
-  base_url: http://<zgx-a>:11434
+  # DAYOF: B — Nemotron Omni is multimodal: same endpoint as LLM. If Omni's
+  # vision is unavailable, fall back to Ollama qwen2.5vl:7b on the laptop
+  # (provider: ollama, base_url: http://localhost:11434).
+  provider: openai-compat
+  model: nvidia/Nemotron-3-Nano-Omni
+  base_url: http://<zgx-a>:8000/v1
   frame_fps: 2
   downscale_to: 768
   run_mode: every_tick

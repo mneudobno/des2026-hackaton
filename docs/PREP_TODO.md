@@ -1,6 +1,8 @@
 # Preparation TODO — "Just Build" for DIS2026X1 (2026-05-08)
 
-Single source of truth for hackathon prep. Keep this updated as we go — tick items with `[x]`, add notes inline. **Last updated: 2026-04-15.**
+Single source of truth for hackathon prep. Keep this updated as we go — tick items with `[x]`, add notes inline. **Last updated: 2026-04-18.**
+
+See also: [`PRE_EVENT_CHECKLIST.md`](./PRE_EVENT_CHECKLIST.md) (consolidated action list with commands + completion signals), [`DEMO_SCRIPT.md`](./DEMO_SCRIPT.md) (60-sec narration mapped to current implementation).
 
 > Status legend: ✅ done · 🟡 in progress · ⏳ blocked/waiting · ⬜ todo · ❌ won't do
 
@@ -138,6 +140,13 @@ Supporting artefacts (created during prep):
 - [ ] ⬜ Add `navigate_to_goal` to regression suite (`docs/TEST_CUES.md`)
 - [ ] ⬜ Teammate onboarding: Kamila + Simon clone + run `hack doctor`
 - [x] ✅ `docs/REHEARSALS.md` — append-only rehearsal log (date, scenario, models, success, latency, insight, action)
+- [x] ✅ **Dual-host readiness** — `agent.pipeline_parallel` flag overlaps VLM(frame_N) with planner(obs_{N-1}); 26/26 scenarios pass with it enabled
+- [x] ✅ **Adapter failover** — `base_urls` list on LLM/VLM adapters; transparent rotation on `httpx` connect/read-timeout errors; 7 unit tests
+- [x] ✅ **Reachy Mini adapter stub** (`src/hack/robot/reachy_mini.py`) — maps 6-method contract onto real Pollen SDK shape; async-wrapped via `asyncio.to_thread`
+- [x] ✅ **Unitree Go2 adapter stub** (`src/hack/robot/unitree_go2.py`) — maps 6-method contract onto `unitree_sdk2py` sport-mode; acrobatic emotes gated
+- [x] ✅ **Adapter contract tests** (`tests/test_robot_adapter_stubs.py`) — 14 tests, SDK imports stubbed via `sys.modules`
+- [x] ✅ **Demo narration** (`docs/DEMO_SCRIPT.md`) — 60-sec script with every beat tied to a live artifact or JSONL event
+- [x] ✅ **Pre-event checklist** (`docs/PRE_EVENT_CHECKLIST.md`) — consolidated T–20d → T+0 action list with commands + completion signals
 
 High-level beats (see `DAY_OF_TASKS.md` for atomic checklist):
 - [ ] ⬜ T+0:00 — intake fill; `hack doctor` on all laptops + both ZGXs

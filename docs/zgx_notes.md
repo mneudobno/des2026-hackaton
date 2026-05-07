@@ -15,15 +15,15 @@ Hardware: NVIDIA GB10 Grace Blackwell, 128 GB unified RAM, 1000 TOPS FP4, DGX OS
 
 ## Default model set
 
-Two tiers. Try Nemotron via NIM first (it's what NVIDIA ships on DGX OS); fall back to Qwen via Ollama if a container wedges.
+Two tiers. Day-of (per organizer email 2026-05-05) the ZGX boxes ship with **vLLM + llama.cpp + Nemotron + OpenCode pre-installed** and serve on `:8000/v1`. Try the vLLM endpoint first; fall back to Qwen via Ollama only if it's wedged.
 
-**Tier A — NVIDIA-native (primary on ZGX):**
+**Tier A — vLLM on ZGX (primary, day-of):**
 
 | Slot | Model | Size | Notes |
 |------|-------|------|-------|
-| Router | `microsoft/phi-3-mini-128k-instruct` (NIM) | ~3.8 B | triage — saves planner invocations |
-| LLM (planner) | `nvidia/Nemotron-3-Nano-30B-A3B` (NIM) | ~65 GB | NVIDIA-tuned reasoning, ReAct-friendly |
-| VLM | `nvidia/Nemotron-Nano-12B-v2-VL` (NIM) | ~28 GB | matches Reachy playbook |
+| LLM + VLM (one endpoint) | `nvidia/Nemotron-3-Nano-Omni` (vLLM) | ~30 B class | **multimodal** — single `/v1/chat/completions` route fills both planner and vision slots. Confirm the exact tag with `curl http://<zgx>:8000/v1/models` at event start. |
+| LLM (alt) | `Qwen/Qwen3-…-A3B` (vLLM) | 35 B params, ~3 B active | MoE; LLM-only. Use if Omni's vision is weak/unavailable. |
+| Router | `microsoft/phi-3-mini-128k-instruct` (Ollama) | ~3.8 B | optional triage on the laptop — only enable if challenge is conversational |
 | STT | `nvidia/riva-parakeet-ctc-1.1B` (Riva) | ~1 GB | gRPC, preinstalled on DGX OS |
 | TTS | `hexgrad/Kokoro-82M` | ~400 MB | fast, fluent; what NVIDIA's photo-booth uses |
 
@@ -58,26 +58,23 @@ curl -s http://127.0.0.1:11434/api/generate \
 ## Networking
 
 - Laptop ↔ ZGX over Ethernet (200 Gbps per port). Use IPs, not mDNS.
-- Open ports needed: 11434 (Ollama), 8000 (hack ui), plus any NIM ports (typically 8000–8001 — verify and remap).
-- If NIM port collides with `hack ui`, change with `hack ui --port 8080`.
+- Open ports needed: **8000 (vLLM, day-of primary)**, 11434 (Ollama, fallback), 8000 again on the laptop for `hack ui` — collision risk; use `hack ui --port 8080` if the ZGX vLLM is reached on its own host.
+- Verify endpoint at event start: `curl http://<zgx>:8000/v1/models` — the response lists exact model tags.
 
-## NIM container reference (placeholder)
+## Pre-installed serving stack (organizer email 2026-05-05)
 
-Fill in once we see what's actually preinstalled at the event:
+ZGX boxes ship with: **HP ZGX Toolkit, NVIDIA AI Enterprise, Nemotron, vLLM, llama.cpp, OpenCode**. Two models are pre-loaded:
 
+- **NVIDIA Nemotron 3 Nano Omni** — multimodal (text + vision); fills both LLM and VLM slots from one `/v1/chat/completions` endpoint.
+- **Qwen 3.6 35B A3B** — text-only; MoE-style with ~3B active parameters; alternative LLM.
+
+Quick on-site checks:
+```bash
+curl -s http://localhost:8000/v1/models | jq .          # list served models
+docker ps --format 'table {{.Names}}\t{{.Ports}}\t{{.Image}}'  # see container layout
 ```
-docker ps --format 'table {{.Names}}\t{{.Ports}}\t{{.Image}}'
-```
 
-Then update `configs/agent.yaml` `llm.provider: openai-compat`, `base_url: http://<zgx-ip>:<port>/v1`.
-
-Expected NIM containers on DGX OS (based on NVIDIA's published playbooks):
-- Nemotron-3-Nano-30B-A3B (reasoning LLM)
-- Nemotron-Nano-12B-v2-VL (VLM)
-- Phi-3-Mini-128K (router)
-- Riva Parakeet ASR (STT)
-- Kokoro TTS
-- FLUX.1-Kontext-dev (image gen — optional, only if the challenge involves visuals)
+Then update `configs/agent.yaml` `llm.provider: openai-compat`, `model: <id from above>`, `base_url: http://<zgx-ip>:8000/v1`.
 
 ## NeMo Agent Toolkit (NAT)
 

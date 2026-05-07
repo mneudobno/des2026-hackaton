@@ -16,7 +16,8 @@ from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Header, Input, RichLog, Static
+from textual.screen import ModalScreen  # noqa: F401
+from textual.widgets import Footer, Header, Input, OptionList, RichLog, Static  # noqa: F401
 
 
 class StatusBar(Static):
@@ -141,6 +142,298 @@ class PlanPanel(Static):
         self.update("[dim]— no active plan —[/]")
 
 
+class ScenarioPicker(ModalScreen[str]):
+    """Modal overlay that lists all scenarios — pick one and press Enter."""
+
+    BINDINGS = [
+        Binding("escape", "dismiss_picker", "Cancel", priority=True),
+    ]
+
+    CSS = """
+    ScenarioPicker {
+        align: center middle;
+    }
+    #picker-box {
+        width: 50;
+        height: 24;
+        border: double #4cff4c;
+        background: #0a140a;
+        padding: 1 2;
+    }
+    #picker-title {
+        text-align: center;
+        color: #4cff4c;
+        text-style: bold;
+        height: 1;
+        margin-bottom: 1;
+    }
+    OptionList {
+        background: #060c06;
+        color: #4cff4c;
+        height: 1fr;
+    }
+    OptionList > .option-list--option-highlighted {
+        background: #1f401f;
+        color: #4cff4c;
+        text-style: bold;
+    }
+    """
+
+    def __init__(self, scenarios: list[str], current: str) -> None:
+        super().__init__()
+        self._scenarios = scenarios
+        self._current = current
+
+    def compose(self) -> ComposeResult:
+        from textual.containers import Vertical as V
+        from textual.widgets import OptionList, Static
+
+        with V(id="picker-box"):
+            yield Static("SELECT SCENARIO", id="picker-title")
+            ol = OptionList(*self._scenarios, id="scenario-list")
+            yield ol
+
+    def on_mount(self) -> None:
+        ol = self.query_one("#scenario-list", OptionList)
+        try:
+            idx = self._scenarios.index(self._current)
+            ol.highlighted = idx
+        except ValueError:
+            pass
+        ol.focus()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(str(event.option.prompt))
+
+    def action_dismiss_picker(self) -> None:
+        self.dismiss("")
+
+
+class CalibrationScreen(ModalScreen[str]):
+    """Day-of calibration overlay.
+
+    Shows the current ``robot.calibration`` block from ``configs/agent.yaml``
+    (+ any overrides in ``configs/agent.local.yaml``) and lets the user nudge
+    each value. A Test action writes a canonical cue to ``runs/live_cues.ndjson``
+    so the active rehearsal — virtual or real adapter — executes it and the
+    user observes the outcome in the main TUI. Save writes to
+    ``configs/agent.local.yaml`` (gitignored), then Ctrl+R in the main screen
+    restarts the rehearsal with the new values.
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss_calibration", "Close", priority=True),
+        Binding("up", "move(-1)", "Up"),
+        Binding("down", "move(+1)", "Down"),
+        Binding("k", "move(-1)", "Up"),
+        Binding("j", "move(+1)", "Down"),
+        Binding("left", "bump(-1)", "−"),
+        Binding("right", "bump(+1)", "+"),
+        Binding("h", "bump(-1)", "−"),
+        Binding("l", "bump(+1)", "+"),
+        Binding("space", "toggle", "Toggle"),
+        Binding("t", "test_forward", "Test fwd"),
+        Binding("r", "test_turn", "Test turn"),
+        Binding("s", "save", "Save"),
+        Binding("R", "reset", "Reset"),
+    ]
+
+    CSS = """
+    CalibrationScreen {
+        align: center middle;
+    }
+    #cal-box {
+        width: 72;
+        height: 30;
+        border: double #ffcf4c;
+        background: #14140a;
+        padding: 1 2;
+    }
+    #cal-title {
+        text-align: center;
+        color: #ffcf4c;
+        text-style: bold;
+        height: 1;
+        margin-bottom: 1;
+    }
+    #cal-body {
+        height: 1fr;
+        color: #ffcf4c;
+    }
+    #cal-tele {
+        height: 3;
+        color: #8af0ff;
+        border-top: solid #3a3a1f;
+        padding-top: 0;
+    }
+    #cal-hint {
+        height: 3;
+        color: #a68a2e;
+        text-style: italic;
+    }
+    """
+
+    # (key, type, min, max, step). ``bool`` is toggled with space.
+    PARAMS: list[tuple[str, str, float, float, float]] = [
+        ("linear_scale",       "float", 0.1, 3.0, 0.05),
+        ("angular_scale",      "float", 0.1, 3.0, 0.05),
+        ("prefer_forward_walk","bool",  0,   1,   1),
+        ("robot_radius",       "float", 0.03, 0.3, 0.01),
+        ("extra_clearance",    "float", 0.0, 0.2, 0.01),
+        ("planner_cell_size",  "float", 0.02, 0.15, 0.01),
+        ("reactive_dodge_m",   "float", 0.05, 0.5, 0.05),
+        ("reactive_advance_m", "float", 0.05, 0.5, 0.05),
+    ]
+
+    def __init__(
+        self,
+        cues_path: Path,
+        config_path: Path = Path("configs/agent.yaml"),
+        local_path: Path = Path("configs/agent.local.yaml"),
+    ) -> None:
+        super().__init__()
+        self.cues_path = cues_path
+        self.config_path = config_path
+        self.local_path = local_path
+        self._index = 0
+        self._values: dict[str, Any] = {}
+        self._load_values()
+
+    def _load_values(self) -> None:
+        import yaml as _yaml
+        base = _yaml.safe_load(self.config_path.read_text()) if self.config_path.exists() else {}
+        cal = (base.get("robot") or {}).get("calibration") or {}
+        if self.local_path.exists():
+            local = _yaml.safe_load(self.local_path.read_text()) or {}
+            cal.update((local.get("robot") or {}).get("calibration") or {})
+        defaults = {
+            "linear_scale": 1.0,
+            "angular_scale": 1.0,
+            "prefer_forward_walk": True,
+            "robot_radius": 0.08,
+            "extra_clearance": 0.03,
+            "planner_cell_size": 0.05,
+            "reactive_dodge_m": 0.2,
+            "reactive_advance_m": 0.25,
+        }
+        self._values = {k: cal.get(k, v) for k, v in defaults.items()}
+
+    def compose(self) -> ComposeResult:
+        from textual.containers import Vertical as V
+        with V(id="cal-box"):
+            yield Static("ROBOT CALIBRATION", id="cal-title")
+            yield Static("", id="cal-body")
+            yield Static("", id="cal-tele")
+            yield Static("", id="cal-hint")
+
+    def on_mount(self) -> None:
+        self._refresh()
+        # Live telemetry refresh 2× per second (reads parent App state).
+        self.set_interval(0.5, self._refresh_telemetry)
+        self._refresh_telemetry()
+
+    def _refresh(self) -> None:
+        body = self.query_one("#cal-body", Static)
+        hint = self.query_one("#cal-hint", Static)
+        lines = []
+        for i, (key, kind, *_rest) in enumerate(self.PARAMS):
+            val = self._values.get(key)
+            if kind == "float":
+                s = f"{float(val):.3f}"
+            else:
+                s = "true" if val else "false"
+            marker = "[bold yellow]▶[/]" if i == self._index else " "
+            lines.append(f"{marker}  [bold]{key:<22}[/] [cyan]{s}[/]")
+        body.update("\n".join(lines))
+        hint.update(
+            "[dim]↑↓ nav  ←→ ±step  space toggle  t:fwd  r:turn  s:save  R:reset  esc:close[/]\n"
+            "[dim]Tests dispatch via the running rehearsal — watch the OpenCV world window.[/]\n"
+            "[dim]Ctrl+R in main to restart with saved values.[/]"
+        )
+
+    def _refresh_telemetry(self) -> None:
+        """Pull live state from the parent HackTUI so calibration can read pose
+        + last action without closing the overlay."""
+        tele = self.query_one("#cal-tele", Static)
+        parent = self.app
+        # Overlay can exist without HackTUI (unit tests) — guard lookups.
+        pose = getattr(parent, "_pose", (0.0, 0.0, 0.0))
+        tick = getattr(parent, "_tick", 0)
+        dist = getattr(parent, "_dist", 0.0)
+        col = getattr(parent, "_collisions", 0)
+        state = getattr(parent, "_state", "idle")
+        proc = getattr(parent, "_rehearsal_proc", None)
+        if proc is None or (hasattr(proc, "poll") and proc.poll() is not None):
+            tele.update(
+                "[bold red]no rehearsal running[/] — press Esc, then Ctrl+R in main to start one\n"
+                "[dim](tests need an active rehearsal so cues execute)[/]"
+            )
+            return
+        tele.update(
+            f"[bold]LIVE[/]  state=[yellow]{state}[/]  tick={tick}\n"
+            f"pose=({pose[0]:+.2f},{pose[1]:+.2f}, θ={math.degrees(pose[2]):+.0f}°)  "
+            f"dist={dist:.2f}  col={col}"
+        )
+
+    def action_dismiss_calibration(self) -> None:
+        self.dismiss("")
+
+    def action_move(self, delta: int) -> None:
+        self._index = (self._index + delta) % len(self.PARAMS)
+        self._refresh()
+
+    def action_bump(self, sign: int) -> None:
+        key, kind, lo, hi, step = self.PARAMS[self._index]
+        if kind == "bool":
+            self._values[key] = not self._values[key]
+        else:
+            v = float(self._values[key]) + sign * step
+            v = max(lo, min(hi, round(v, 4)))
+            self._values[key] = v
+        self._refresh()
+
+    def action_toggle(self) -> None:
+        key, kind, *_ = self.PARAMS[self._index]
+        if kind == "bool":
+            self._values[key] = not self._values[key]
+            self._refresh()
+
+    def _emit_cue(self, text: str) -> None:
+        self.cues_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.cues_path.open("a") as f:
+            f.write(json.dumps({"ts": time.time(), "text": text}) + "\n")
+
+    def action_test_forward(self) -> None:
+        """Send a canonical "2 steps forward" cue — deterministic, no LLM."""
+        self._emit_cue("2 steps forward")
+        self._flash("sent: 2 steps forward (watch main screen for actual motion)")
+
+    def action_test_turn(self) -> None:
+        """Send a 'turn 90 degrees' cue for angular_scale calibration."""
+        self._emit_cue("turn 90 degrees")
+        self._flash("sent: turn 90 degrees (verify heading delta in status bar)")
+
+    def _flash(self, msg: str) -> None:
+        hint = self.query_one("#cal-hint", Static)
+        hint.update(f"[bold green]{msg}[/]")
+
+    def action_reset(self) -> None:
+        self._load_values()
+        self._refresh()
+        self._flash("reloaded from configs (unsaved changes discarded)")
+
+    def action_save(self) -> None:
+        import yaml as _yaml
+        existing: dict[str, Any] = {}
+        if self.local_path.exists():
+            existing = _yaml.safe_load(self.local_path.read_text()) or {}
+        robot_block = existing.setdefault("robot", {})
+        robot_block["calibration"] = dict(self._values)
+        self.local_path.parent.mkdir(parents=True, exist_ok=True)
+        self.local_path.write_text(_yaml.safe_dump(existing, sort_keys=False))
+        self._flash(f"saved → {self.local_path} (Ctrl+R in main to apply)")
+
+
 class HackTUI(App):
     CSS = """
     Screen {
@@ -209,10 +502,15 @@ class HackTUI(App):
         Binding("ctrl+o", "cycle_scenario", "Scenario", priority=True),
         Binding("ctrl+k", "kill", "Kill", priority=True),
         Binding("ctrl+m", "mic", "Mic", priority=True),
+        Binding("ctrl+l", "calibrate", "Calibrate", priority=True),
     ]
 
-    SCENARIOS = ["dance", "obstacle-course", "obstacle-hard", "obstacle-wall",
-                 "pick-and-place", "follow", "chit-chat"]
+    SCENARIOS = [
+        "dance", "obstacle-course", "obstacle-hard", "obstacle-wall",
+        "pick-and-place", "follow", "chit-chat",
+        "random-0", "random-1", "random-2", "random-dense-0", "random-dense-1",
+        "labyrinth-3x3-0", "labyrinth-3x3-1", "labyrinth-5x5-0", "labyrinth-5x5-1",
+    ]
 
     def __init__(
         self,
@@ -450,14 +748,15 @@ class HackTUI(App):
         self._start_rehearsal()
 
     def action_cycle_scenario(self) -> None:
-        """Ctrl+O: cycle through scenarios (shown in alerts)."""
-        try:
-            idx = self.SCENARIOS.index(self.scenario)
-        except ValueError:
-            idx = -1
-        self.scenario = self.SCENARIOS[(idx + 1) % len(self.SCENARIOS)]
-        alerts = self.query_one("#alerts-log", RichLog)
-        alerts.write(f"[yellow]scenario → {self.scenario}[/] (Ctrl+R to start)")
+        """Ctrl+O: open scenario picker modal."""
+
+        def _on_pick(result: str) -> None:
+            if result:
+                self.scenario = result
+                alerts = self.query_one("#alerts-log", RichLog)
+                alerts.write(f"[yellow]scenario → {self.scenario}[/] (Ctrl+R to start)")
+
+        self.push_screen(ScenarioPicker(self.SCENARIOS, self.scenario), _on_pick)
 
     def action_mic(self) -> None:
         """Ctrl+M: record from mic, transcribe with Whisper, send as cue."""
@@ -518,10 +817,10 @@ segments, _ = model.transcribe("{wav_path}", language="en")
 text = " ".join(s.text.strip() for s in segments).strip()
 print(text)
 """
-            self.call_from_thread(self._log_alert, "transcribing…")
+            self.call_from_thread(self._log_alert, "transcribing… (first run downloads model ~500MB)")
             result = _sp.run(
                 ["uv", "run", "python", "-c", transcribe_script],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True, text=True, timeout=120,
             )
             text = result.stdout.strip()
             if result.returncode != 0 or not text:
@@ -562,6 +861,35 @@ print(text)
         self._kill_rehearsal()
         alerts = self.query_one("#alerts-log", RichLog)
         alerts.write("[red]rehearsal killed[/]")
+
+    def action_calibrate(self) -> None:
+        """Ctrl+L: open the calibration overlay.
+
+        Works against whatever robot the TUI is currently driving — virtual
+        world or real adapter. Tests emit canonical cues via live_cues.ndjson
+        so the active rehearsal executes them. Save → agent.local.yaml →
+        Ctrl+R to restart and pick up the new values.
+
+        If no rehearsal is running we kick one off first (brings up the OpenCV
+        world window so calibration has something visual to read).
+        """
+        alerts = self.query_one("#alerts-log", RichLog)
+        proc = self._rehearsal_proc
+        if proc is None or (hasattr(proc, "poll") and proc.poll() is not None):
+            alerts.write("[yellow]no rehearsal running — starting one for calibration[/]")
+            self._start_rehearsal()
+
+        def _on_close(_: str) -> None:
+            alerts.write("[yellow]calibration closed — Ctrl+R to restart with saved values[/]")
+
+        self.push_screen(
+            CalibrationScreen(
+                cues_path=self.cues_path,
+                config_path=Path(self.config),
+                local_path=Path("configs/agent.local.yaml"),
+            ),
+            _on_close,
+        )
 
 
 def _fmt(name: str, args: dict) -> str:

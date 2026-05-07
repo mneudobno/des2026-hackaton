@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
-import socket
 import subprocess
 from pathlib import Path
 
@@ -29,7 +28,7 @@ console = Console()
 # ---------- rehearse (pre-event + day-of) ----------
 @app.command()
 def rehearse(
-    scenario: str = typer.Option("pick-and-place", help="pick-and-place | follow | chit-chat | dance | obstacle-course"),
+    scenario: str = typer.Option("pick-and-place", help="Scenario name. Built-in: pick-and-place, follow, chit-chat, dance, obstacle-*. Random: random-0..4, random-dense-0..4, random-seed-N. Labyrinth: labyrinth-3x3-0..4, labyrinth-5x5-0..4, labyrinth-RxC-seed-N."),
     config: Path = typer.Option(Path("configs/agent.yaml"), "--config"),
     ticks: int = typer.Option(0, help="Override scenario max_ticks (0 = use scenario default)."),
     save_frames: bool = typer.Option(False, help="Save every rendered frame to runs/rehearsal-frames-<ts>/."),
@@ -681,17 +680,25 @@ def doctor() -> None:
     except Exception as e:
         row("microphone", False, str(e))
 
-    # ports
-    for port in (11434, 8000):
-        s = socket.socket()
-        s.settimeout(0.2)
-        try:
-            s.connect(("127.0.0.1", port))
-            row(f"port :{port}", True, "in use (server up?)")
-        except OSError:
-            row(f"port :{port}", True, "free")
-        finally:
-            s.close()
+    # serving stacks — probe Ollama (:11434) and vLLM/OpenAI-compat (:8000).
+    # On the day-of ZGX the email confirms vLLM is pre-installed; on the laptop
+    # Ollama is the default. We report both so the team sees which is live.
+    import httpx as _httpx
+    try:
+        r = _httpx.get("http://127.0.0.1:11434/api/tags", timeout=0.5)
+        row("ollama :11434", r.status_code == 200, f"HTTP {r.status_code}")
+    except Exception:
+        row("ollama :11434", False, "not responding (ok if vLLM is the stack)")
+
+    try:
+        r = _httpx.get("http://127.0.0.1:8000/v1/models", timeout=0.5)
+        if r.status_code == 200:
+            ids = [m.get("id", "?") for m in (r.json().get("data") or [])]
+            row("vllm :8000/v1", True, f"models: {', '.join(ids[:3]) or '(none)'}")
+        else:
+            row("vllm :8000/v1", False, f"HTTP {r.status_code}")
+    except Exception:
+        row("vllm :8000/v1", False, "not responding (ok if Ollama is the stack)")
 
     # config
     cfg = Path("configs/agent.yaml")
@@ -713,42 +720,86 @@ def serve_start(models: str = typer.Option("llm,vlm,stt,tts", help="Comma-separa
 
 @serve.command("status")
 def serve_status(host: str = "127.0.0.1") -> None:
-    """Probe each local model server."""
+    """Probe local model servers (Ollama + vLLM)."""
     import httpx
     targets = {
-        "ollama": f"http://{host}:11434/api/tags",
+        "ollama :11434": f"http://{host}:11434/api/tags",
+        "vllm :8000/v1": f"http://{host}:8000/v1/models",
     }
     for name, url in targets.items():
         try:
             r = httpx.get(url, timeout=2.0)
-            console.print(f"[green]{name}[/] {url} -> {r.status_code}")
+            extra = ""
+            if r.status_code == 200 and "/v1/models" in url:
+                ids = [m.get("id", "?") for m in (r.json().get("data") or [])]
+                extra = f"  models: {', '.join(ids[:3]) or '(none)'}"
+            console.print(f"[green]{name}[/] {url} -> {r.status_code}{extra}")
         except Exception as e:
             console.print(f"[red]{name}[/] {url} -> {e}")
 
 
 @serve.command("stop")
 def serve_stop(force: bool = False) -> None:
-    """Stop local model servers (best-effort)."""
+    """Stop local model servers (best-effort). Targets Ollama; vLLM lifecycle
+    is managed by the ZGX administrators, not by this command."""
     if force:
         subprocess.run(["pkill", "-9", "-f", "ollama"], check=False)
     else:
         subprocess.run(["pkill", "-f", "ollama"], check=False)
 
 
-@serve.command("warmup")
-def serve_warmup() -> None:
-    """Fire 3 tiny prompts to warm caches."""
+def _detect_serving_provider(host: str) -> tuple[str, str | None]:
+    """Return (provider, first_model_id). Provider is one of 'vllm', 'ollama',
+    or 'none'. Probes vLLM first since it's the day-of primary."""
     import httpx
+    try:
+        r = httpx.get(f"http://{host}:8000/v1/models", timeout=1.0)
+        if r.status_code == 200:
+            ids = [m.get("id") for m in (r.json().get("data") or [])]
+            return "vllm", (ids[0] if ids else None)
+    except Exception:
+        pass
+    try:
+        r = httpx.get(f"http://{host}:11434/api/tags", timeout=1.0)
+        if r.status_code == 200:
+            tags = [m.get("name") for m in (r.json().get("models") or [])]
+            return "ollama", (tags[0] if tags else None)
+    except Exception:
+        pass
+    return "none", None
+
+
+@serve.command("warmup")
+def serve_warmup(
+    host: str = "127.0.0.1",
+    provider: str = typer.Option("auto", help="auto | vllm | ollama"),
+    model: str = typer.Option("", help="Override the model tag (default: auto-detect)."),
+) -> None:
+    """Fire 3 tiny prompts to warm caches. Auto-detects vLLM (preferred) or Ollama."""
+    import httpx
+    if provider == "auto":
+        provider, detected = _detect_serving_provider(host)
+        if not model:
+            model = detected or ""
+        if provider == "none":
+            console.print("[red]neither vLLM (:8000) nor Ollama (:11434) is responding[/]")
+            raise typer.Exit(1)
+        console.print(f"detected [bold]{provider}[/] (model: {model or '?'})")
+    if provider == "vllm":
+        url = f"http://{host}:8000/v1/chat/completions"
+        body = {"model": model or "auto", "messages": [{"role": "user", "content": "ok"}], "max_tokens": 4}
+    elif provider == "ollama":
+        url = f"http://{host}:11434/api/generate"
+        body = {"model": model or "qwen2.5:7b", "prompt": "ok", "stream": False, "options": {"num_predict": 4}}
+    else:
+        console.print(f"[red]unknown provider {provider!r}[/]")
+        raise typer.Exit(2)
     for i in range(3):
         try:
-            r = httpx.post(
-                "http://127.0.0.1:11434/api/generate",
-                json={"model": "qwen2.5:7b", "prompt": "ok", "stream": False, "options": {"num_predict": 4}},
-                timeout=30.0,
-            )
-            console.print(f"warmup {i+1}: {r.status_code}")
+            r = httpx.post(url, json=body, timeout=30.0)
+            console.print(f"warmup {i + 1}: {r.status_code}")
         except Exception as e:
-            console.print(f"[red]warmup {i+1} failed: {e}[/]")
+            console.print(f"[red]warmup {i + 1} failed: {e}[/]")
 
 
 # ---------- robot ----------

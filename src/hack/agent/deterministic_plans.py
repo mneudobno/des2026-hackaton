@@ -39,6 +39,9 @@ def classify_cue(cue: str) -> str | None:
     # Return-to-origin first when the cue mentions a destination (start/stage/origin).
     if _is_return_cue(c):
         return "return_to_origin"
+    # Numbered walk: "10 steps forward", "5 steps left", etc.
+    if _is_numbered_walk(c):
+        return "numbered_walk"
     # Simple move only fires when there's NO destination keyword.
     if _is_simple_move(c):
         return "single_move"
@@ -66,6 +69,10 @@ async def classify_cue_smart(cue: str, planner: Any = None) -> str | None:
     compound_markers = (" and then ", " after that ", " then ", " afterwards ",
                         " followed by ", " and after ", " and also ")
     if any(m in f" {c} " for m in compound_markers):
+        return None
+
+    # Comma-separated sub-cues (e.g. "10 steps forward, 10 steps left").
+    if "," in c:
         return None
 
     # Simple "and" between two verb phrases: "walk forward and come back"
@@ -132,6 +139,9 @@ def generate_plan(
     # Merge calibration preferences into safety so generators can read them.
     merged_safety = dict(safety)
     if calibration:
+        # Pass the whole calibration block through (path planner, dodge sizes,
+        # robot footprint, etc.) and keep the old single-key back-compat.
+        merged_safety["_calibration"] = dict(calibration)
         merged_safety["prefer_forward_walk"] = calibration.get("prefer_forward_walk", False)
     if world_objects:
         merged_safety["_world_objects"] = world_objects
@@ -178,10 +188,18 @@ def _is_return_cue(c: str) -> bool:
 def _is_navigate_to_target(c: str) -> bool:
     """Cues like 'go to the goal', 'navigate to the green goal', 'move to the bin'."""
     nav_verbs = ("go to the", "navigate to the", "move to the", "walk to the", "reach the")
-    target_kws = ("goal", "target", "cube", "bin", "marker", "object")
+    target_kws = (
+        "goal", "target", "cube", "bin", "marker", "object",
+        "person", "human", "blue", "red", "green", "yellow",
+    )
     if not any(v in c for v in nav_verbs):
         return False
     return any(t in c for t in target_kws)
+
+
+def _is_numbered_walk(c: str) -> bool:
+    """Match patterns like '10 steps forward', '5 step left', 'walk 3 steps right'."""
+    return bool(re.search(r"\d+\s*steps?\s*(forward|left|right|back|backward|backwards|ahead)", c))
 
 
 def _is_simple_move(c: str) -> bool:
@@ -356,6 +374,58 @@ def _gen_single_move(
     )]
 
 
+def _gen_numbered_walk(
+    cue: str, pose: tuple[float, float, float], safety: dict[str, float],
+) -> list[PlanStep]:
+    """Handle 'N steps forward/left/right/back'.
+
+    'left'/'right' means turn 90° then walk forward N steps (square-walk semantics).
+    """
+    c = cue.lower()
+    m = re.search(r"(\d+)\s*steps?\s*(forward|left|right|back|backward|backwards|ahead)", c)
+    if not m:
+        return []
+    n = int(m.group(1))
+    direction = m.group(2)
+    lin = float(safety.get("max_linear_speed", 0.2))
+    ang = float(safety.get("max_angular_speed", 0.6))
+    steps: list[PlanStep] = []
+
+    # For left/right/back: turn first, then walk forward.
+    turn_rad = 0.0
+    if direction in ("left",):
+        turn_rad = math.pi / 2  # +90° left
+    elif direction in ("right",):
+        turn_rad = -math.pi / 2  # -90° right
+    elif direction in ("back", "backward", "backwards"):
+        turn_rad = math.pi  # 180°
+
+    if abs(turn_rad) > 0.05:
+        n_turn = max(1, math.ceil(abs(turn_rad) / ang))
+        per_turn = turn_rad / n_turn
+        for i in range(n_turn):
+            steps.append(PlanStep(
+                text=f"Turn {'left' if turn_rad > 0 else 'right'} [{i+1}/{n_turn}]",
+                tool={
+                    "name": "move",
+                    "args": {"dx": 0.0, "dy": 0.0, "dtheta": round(per_turn, 6)},
+                    "rationale": f"turn step {i+1}/{n_turn}",
+                },
+            ))
+
+    # Walk forward N steps (each step = max_linear_speed).
+    for i in range(n):
+        steps.append(PlanStep(
+            text=f"Walk forward [{i+1}/{n}]",
+            tool={
+                "name": "move",
+                "args": {"dx": round(lin, 4), "dy": 0.0, "dtheta": 0.0},
+                "rationale": f"walk step {i+1}/{n}",
+            },
+        ))
+    return steps
+
+
 def _gen_walk_circle(
     cue: str, pose: tuple[float, float, float], safety: dict[str, float],
 ) -> list[PlanStep]:
@@ -408,20 +478,23 @@ def check_obstacle_avoidance(
     # Pick the nearest ahead obstacle.
     nearest = ahead_obstacles[0]
     pos = nearest.get("rough_position", "ahead")
-    ang = float(safety.get("max_angular_speed", 0.6))
     lin = float(safety.get("max_linear_speed", 0.2))
-    # Simple body-frame lateral dodge: step sideways + step forward to clear.
+    # Dodge magnitude from calibration (so different robots size correctly);
+    # still capped at max_linear_speed so safety wins.
+    cal = safety.get("_calibration") or {}
+    dodge = min(lin, float(cal.get("reactive_dodge_m", 0.2)))
+    advance = min(lin, float(cal.get("reactive_advance_m", 0.25)))
     # direction: +dy = left, -dy = right. If obstacle is ahead-left, dodge right.
     dy_sign = -1.0 if "left" in pos else +1.0
     return [
         PlanStep(
             text=f"Sidestep {'right' if dy_sign < 0 else 'left'} to dodge obstacle",
-            tool={"name": "move", "args": {"dx": 0.0, "dy": round(dy_sign * lin, 4), "dtheta": 0.0},
+            tool={"name": "move", "args": {"dx": 0.0, "dy": round(dy_sign * dodge, 4), "dtheta": 0.0},
                   "rationale": "lateral dodge"},
         ),
         PlanStep(
             text="Advance past obstacle",
-            tool={"name": "move", "args": {"dx": round(lin, 4), "dy": 0.0, "dtheta": 0.0},
+            tool={"name": "move", "args": {"dx": round(advance, 4), "dy": 0.0, "dtheta": 0.0},
                   "rationale": "clear obstacle"},
         ),
     ]
@@ -484,37 +557,80 @@ def inject_avoidance(
 def _gen_navigate_to_target(
     cue: str, pose: tuple[float, float, float], safety: dict[str, float],
 ) -> list[PlanStep]:
-    """Navigate to a named world object (goal, bin, cube, etc.)."""
+    """Navigate to a named world object (goal, bin, cube, etc.).
+
+    When obstacles are present in ``safety["_world_objects"]`` the plan is
+    computed by grid A* so it routes around them. Otherwise we fall back to
+    the simple body-frame / forward-walk straight-line generators.
+    """
     world_objects = safety.get("_world_objects") or {}
-    # Find the target object by matching cue keywords.
+    # Find the target object by matching cue keywords. Prefer containers /
+    # marked targets first (usually named "goal" / "bin") so a wall cell whose
+    # name happens to share a letter with the cue doesn't hijack navigation.
     c = cue.lower()
     target = None
-    for name, obj in world_objects.items():
-        if name.lower() in c or any(k in c for k in name.lower().split("_")):
+    # 1. Exact-name match over containers and marked targets.
+    for obj in world_objects.values():
+        nm = obj.name.lower()
+        if (getattr(obj, "is_container", False) or getattr(obj, "is_target", False)) \
+                and nm in c:
             target = obj
             break
-    # Fallback: find any object marked as container or target.
+    # 2. Token match (>=3-char words only) over containers/targets.
     if target is None:
         for obj in world_objects.values():
-            if hasattr(obj, "is_container") and obj.is_container:
+            if not (getattr(obj, "is_container", False) or getattr(obj, "is_target", False)):
+                continue
+            tokens = [t for t in obj.name.lower().split("_") if len(t) >= 3]
+            if any(t in c for t in tokens):
+                target = obj
+                break
+    # 3. Last resort — take any container we find.
+    if target is None:
+        for obj in world_objects.values():
+            if getattr(obj, "is_container", False):
                 target = obj
                 break
     if target is None:
         return []  # can't find target; fall through to LLM
-    # Navigate to target position using forward-walk.
     tx, ty = target.x, target.y
     x, y, th = pose
-    # Reuse the return_via_forward_walk but targeting (tx, ty) instead of (0, 0).
     dist = math.hypot(tx - x, ty - y)
     if dist < 0.05:
         return [PlanStep(text="Already at target.", tool={"name": "wait", "args": {"seconds": 0.5}, "rationale": "already there"})]
     lin = float(safety.get("max_linear_speed", 0.2))
     ang = float(safety.get("max_angular_speed", 0.6))
     prefer_fwd = bool(safety.get("prefer_forward_walk", False))
+
+    # If there are obstacles in the world, plan a polyline around them via A*.
+    cal = safety.get("_calibration") or {}
+    robot_radius = float(cal.get("robot_radius", 0.08))
+    extra_clearance = float(cal.get("extra_clearance", 0.03))
+    cell_size = float(cal.get("planner_cell_size", 0.05))
+    obstacles = [o for o in world_objects.values()
+                 if getattr(o, "is_obstacle", False)]
+    waypoints: list[tuple[float, float]] = []
+    if obstacles:
+        from hack.agent.path_planner import find_path
+        waypoints = find_path(
+            (x, y), (tx, ty), obstacles,
+            robot_radius=robot_radius,
+            extra_clearance=extra_clearance,
+            cell_size=cell_size,
+        )
+    if waypoints and len(waypoints) >= 2:
+        steps = _plan_along_waypoints(waypoints, pose, lin, ang, prefer_fwd)
+        # Flag these steps so the runner knows they already avoid obstacles
+        # and can skip reactive sidestep injection.
+        for s in steps:
+            if s.tool is not None:
+                s.tool.setdefault("meta", {})
+                s.tool["meta"]["from_astar"] = True
+        return steps
+
+    # No obstacles (or planner failed) — straight-line fall-through.
     if prefer_fwd:
-        # Shift coordinates so target is "origin", reuse forward-walk.
         return _navigate_forward_walk(x, y, th, tx, ty, dist, lin, ang)
-    # Body-frame direct.
     cos_t, sin_t = math.cos(th), math.sin(th)
     body_dx = (tx - x) * cos_t + (ty - y) * sin_t
     body_dy = -(tx - x) * sin_t + (ty - y) * cos_t
@@ -526,6 +642,62 @@ def _gen_navigate_to_target(
             tool={"name": "move", "args": {"dx": round(body_dx / n, 4), "dy": round(body_dy / n, 4), "dtheta": 0.0},
                   "rationale": f"step {i+1}/{n} toward target"},
         ))
+    return steps
+
+
+def _plan_along_waypoints(
+    waypoints: list[tuple[float, float]],
+    pose: tuple[float, float, float],
+    lin: float, ang: float, prefer_fwd: bool,
+) -> list[PlanStep]:
+    """Turn a polyline into a sequence of PlanStep move calls.
+
+    ``prefer_fwd`` — real-robot style: turn to face each waypoint, walk forward.
+    Otherwise emit body-frame (dx,dy) steps suitable for the sim / omni mock.
+    """
+    steps: list[PlanStep] = []
+    x, y, th = pose
+    for idx, (wx, wy) in enumerate(waypoints[1:], start=1):
+        seg_dx, seg_dy = wx - x, wy - y
+        seg_len = math.hypot(seg_dx, seg_dy)
+        if seg_len < 1e-4:
+            continue
+        if prefer_fwd:
+            target_angle = math.atan2(seg_dy, seg_dx)
+            turn_needed = (target_angle - th + math.pi) % (2 * math.pi) - math.pi
+            if abs(turn_needed) > 0.05:
+                n_turn = max(1, math.ceil(abs(turn_needed) / ang))
+                per_turn = turn_needed / n_turn
+                for i in range(n_turn):
+                    steps.append(PlanStep(
+                        text=f"Turn toward wp {idx} [{i+1}/{n_turn}]",
+                        tool={"name": "move", "args": {"dx": 0.0, "dy": 0.0, "dtheta": round(per_turn, 6)},
+                              "rationale": f"face wp{idx}"},
+                    ))
+                th = target_angle
+            n_walk = max(1, math.ceil(seg_len / lin))
+            per_walk = seg_len / n_walk
+            for i in range(n_walk):
+                steps.append(PlanStep(
+                    text=f"Walk to wp {idx} [{i+1}/{n_walk}]",
+                    tool={"name": "move", "args": {"dx": round(per_walk, 4), "dy": 0.0, "dtheta": 0.0},
+                          "rationale": f"walk wp{idx}"},
+                ))
+            x, y = wx, wy
+        else:
+            # Body-frame step. For omnidirectional sim: split into chunks of lin.
+            cos_t, sin_t = math.cos(th), math.sin(th)
+            bdx = seg_dx * cos_t + seg_dy * sin_t
+            bdy = -seg_dx * sin_t + seg_dy * cos_t
+            n = max(1, math.ceil(max(abs(bdx), abs(bdy)) / lin))
+            for i in range(n):
+                steps.append(PlanStep(
+                    text=f"Path wp {idx} [{i+1}/{n}]",
+                    tool={"name": "move",
+                          "args": {"dx": round(bdx / n, 4), "dy": round(bdy / n, 4), "dtheta": 0.0},
+                          "rationale": f"waypoint {idx}"},
+                ))
+            x, y = wx, wy
     return steps
 
 
@@ -561,6 +733,48 @@ _GENERATORS: dict[str, Any] = {
     "return_to_origin": _gen_return_to_origin,
     "rotate_degrees": _gen_rotate_degrees,
     "single_move": _gen_single_move,
+    "numbered_walk": _gen_numbered_walk,
     "walk_circle": _gen_walk_circle,
     "navigate_to_target": _gen_navigate_to_target,
 }
+
+
+def split_compound_cue(
+    cue: str,
+    pose: tuple[float, float, float],
+    safety: dict[str, float],
+    calibration: dict[str, float] | None = None,
+    world_objects: dict[str, Any] | None = None,
+) -> list[PlanStep] | None:
+    """Split a compound cue on commas / 'then' / 'and then' and handle each
+    sub-cue deterministically. Returns None if any sub-cue can't be handled
+    (caller should fall through to LLM decomposer).
+    """
+    c = cue.strip()
+    # Split on commas, ' then ', ' and then '.
+    parts = re.split(r"\s*,\s*|\s+and then\s+|\s+then\s+", c)
+    parts = [p.strip() for p in parts if p.strip()]
+    if len(parts) < 2:
+        return None
+
+    all_steps: list[PlanStep] = []
+    sim_x, sim_y, sim_th = pose
+    for part in parts:
+        case = classify_cue(part)
+        if case is None:
+            return None  # can't handle this sub-cue deterministically
+        steps = generate_plan(case, part, (sim_x, sim_y, sim_th), safety, calibration, world_objects)
+        if not steps:
+            return None
+        # Simulate the effect of these steps on the pose for subsequent sub-cues.
+        for s in steps:
+            if s.tool and s.tool.get("name") == "move":
+                a = s.tool.get("args", {})
+                dx = float(a.get("dx", 0))
+                dy = float(a.get("dy", 0))
+                dt = float(a.get("dtheta", 0))
+                sim_x += dx * math.cos(sim_th) - dy * math.sin(sim_th)
+                sim_y += dx * math.sin(sim_th) + dy * math.cos(sim_th)
+                sim_th += dt
+        all_steps.extend(steps)
+    return all_steps

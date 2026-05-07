@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import statistics
 import time
 from collections import Counter
@@ -32,6 +33,7 @@ from hack.agent.deterministic_plans import (  # noqa: F401
     classify_cue_smart,
     generate_plan,
     inject_avoidance,
+    split_compound_cue,
 )
 from hack.agent.planner import OllamaPlanner, PlannerInput
 from hack.agent.tools import ToolBox, ToolCall
@@ -109,6 +111,29 @@ def _fmt_counter(c: Counter) -> str:
     return "  ".join(f"{k}={v}" for k, v in sorted(c.items()))
 
 
+def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge overlay into base (overlay wins on scalars)."""
+    out = dict(base)
+    for k, v in overlay.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _safety_with_calibration(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Merge robot.safety + robot.calibration so downstream planners see the
+    full tuning envelope (dodge sizes, footprint, A* cell size, speed limits).
+    Same shape passed everywhere — rehearsal and day-of both consume this."""
+    robot_cfg = cfg.get("robot") or {}
+    merged = dict(robot_cfg.get("safety") or {})
+    cal = robot_cfg.get("calibration")
+    if cal:
+        merged["_calibration"] = dict(cal)
+    return merged
+
+
 @dataclass
 class RehearsalMetrics:
     scenario: str
@@ -165,6 +190,13 @@ async def rehearse(
             world are meaningless (only the robot's pose is tracked).
     """
     cfg = yaml.safe_load(config_path.read_text())
+    # Merge a per-teammate/day-of overlay if it sits alongside the main config.
+    # Lets the TUI calibration screen persist adjustments to agent.local.yaml
+    # (gitignored) without touching the shared config.
+    overlay_path = config_path.parent / f"{config_path.stem}.local{config_path.suffix}"
+    if overlay_path.exists():
+        overlay = yaml.safe_load(overlay_path.read_text()) or {}
+        cfg = _deep_merge(cfg, overlay)
     scenario = load_scenario(scenario_name)
     real_mode = adapter != "virtual"
     real_robot = None
@@ -226,10 +258,14 @@ async def rehearse(
         max_tool_calls=cfg["agent"].get("max_tool_calls_per_turn", 4),
     )
     # Mock VLM: use ground-truth from virtual world (no API call).
+    # When adapter=virtual we *always* use MockVLM — obstacle detection must be
+    # reliable for rehearsal. Real VLMs can still be tested via adapter=mock/http.
     vlm_provider = cfg["vlm"].get("provider") or cfg["vlm"].get("adapter") or "ollama"
-    if vlm_provider == "mock" and not real_mode:
+    if not real_mode and (vlm_provider == "mock" or adapter == "virtual"):
         from hack.models.mock_vlm import MockVLM
         vlm = VLMClient(adapter=MockVLM(world_robot=robot))
+        trace.log("alert", tick=0, code="vlm-forced-mock",
+                  message="adapter=virtual → forcing MockVLM for deterministic obstacle detection")
     else:
         vlm = VLMClient(adapter=_make_vlm(cfg["vlm"], prompt=cfg["agent"]["observation_prompt"]))
 
@@ -242,10 +278,116 @@ async def rehearse(
     # Voice-driven plan memory. No plan → idle. No fallback anywhere.
     plan_memory: PlanMemory | None = None
 
+    # Pipelined VLM/planner mode: when two inference hosts are available,
+    # overlap VLM(frame_N) with planner(obs_{N-1}) so tick latency ≈
+    # max(vlm_ms, planner_ms) instead of their sum. The planner sees a
+    # one-tick-stale observation — acceptable at 5 Hz. Default is serial.
+    pipeline_parallel = bool(cfg.get("agent", {}).get("pipeline_parallel", False))
+    vlm_task: asyncio.Task | None = None
+    vlm_task_started: float = 0.0
+
+    async def _pipelined_observe(frame_for_next):
+        """Pipelined VLM: await the task launched last tick (observing the
+        previous frame), then launch a new task on frame_for_next.
+
+        Returns (obs, elapsed_ms_or_None, error_or_None). First call is a warmup
+        that launches but does not await — returns (empty_obs, None, None).
+        """
+        nonlocal vlm_task, vlm_task_started
+        if vlm_task is None:
+            vlm_task = asyncio.create_task(vlm.observe(frame_for_next))
+            vlm_task_started = time.time()
+            empty = type("O", (), {"model_dump": lambda self: {"scene": "(pipelined warmup; no prior frame)"}})()
+            return empty, None, None
+        started = vlm_task_started
+        try:
+            obs = await vlm_task
+            elapsed = (time.time() - started) * 1000
+            vlm_task = asyncio.create_task(vlm.observe(frame_for_next))
+            vlm_task_started = time.time()
+            return obs, elapsed, None
+        except Exception as exc:
+            elapsed = (time.time() - started) * 1000
+            vlm_task = asyncio.create_task(vlm.observe(frame_for_next))
+            vlm_task_started = time.time()
+            return None, elapsed, str(exc)
+    # Progress watchdog — exit early when the robot stops closing on the goal.
+    # Start tracking only after the first cue arrives (idle waiting for a
+    # scripted cue at tick 15 is not a stall). max_ticks is kept as a hard ceiling.
+    stall_goal_obj = robot.objects.get(scenario.success_container)
+    stall_timeout = scenario.stall_timeout_ticks
+    stall_eps = scenario.stall_progress_epsilon
+    stall_best_dist = float("inf")
+    stall_best_tick: int | None = None  # None → watchdog not yet armed
+    stall_triggered = False
+
     win_name = f"hack rehearse | {scenario.name}"
     if display:
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(win_name, 640, 640)
+
+    # Limit how many times we'll auto-reinject the cue after a stall — stops
+    # infinite loops when even a fresh A* plan can't make progress.
+    stall_replans_used = 0
+    stall_replans_max = 1
+
+    def _watchdog_check(tick: int) -> bool:
+        """Return True if the run should end due to stagnation.
+
+        Before ending, give the planner one shot at a fresh plan from the
+        current pose (``stall_replans_max``). A second stall terminates.
+        """
+        nonlocal stall_best_dist, stall_best_tick, stall_triggered, stall_replans_used
+        if stall_goal_obj is None or stall_timeout <= 0:
+            return False
+        if stall_best_tick is None:
+            if not transcript:
+                return False
+            stall_best_dist = math.hypot(
+                robot.pose[0] - stall_goal_obj.x,
+                robot.pose[1] - stall_goal_obj.y,
+            )
+            stall_best_tick = tick
+            return False
+        cur_dist = math.hypot(
+            robot.pose[0] - stall_goal_obj.x,
+            robot.pose[1] - stall_goal_obj.y,
+        )
+        if cur_dist < stall_best_dist - stall_eps:
+            stall_best_dist = cur_dist
+            stall_best_tick = tick
+            return False
+        if tick - stall_best_tick >= stall_timeout:
+            if stall_replans_used < stall_replans_max and transcript:
+                stall_replans_used += 1
+                trace.log(
+                    "alert", tick=tick, code="stall-replan",
+                    message=(
+                        f"no progress for {tick - stall_best_tick} ticks; "
+                        f"re-injecting last cue for fresh A* plan "
+                        f"(attempt {stall_replans_used}/{stall_replans_max})"
+                    ),
+                )
+                # Re-append the last cue so the cue-dispatch block re-runs
+                # deterministic planning from the current pose.
+                nonlocal_reinject[0] = transcript[-1]
+                # Reset the best-distance tracker so the retry gets a fair window.
+                stall_best_dist = cur_dist
+                stall_best_tick = tick
+                return False
+            trace.log(
+                "alert", tick=tick, code="stalled",
+                message=(
+                    f"no progress for {tick - stall_best_tick} ticks; "
+                    f"best dist {stall_best_dist:.2f}m (threshold {stall_eps:.2f}m)"
+                ),
+            )
+            stall_triggered = True
+            return True
+        return False
+
+    # Mutable cell used by the watchdog to request a cue re-inject on the next tick.
+    nonlocal_reinject: list[str | None] = [None]
 
     for tick in range(1, total_ticks + 1):
         robot.tick = tick
@@ -259,6 +401,14 @@ async def rehearse(
         if live_text:
             new_cue_text = (new_cue_text + " | " if new_cue_text else "") + live_text
             trace.log("live_cue", tick=tick, text=live_text)
+        # Watchdog may request a cue re-inject (fresh A* from current pose).
+        if nonlocal_reinject[0] is not None:
+            replay = nonlocal_reinject[0]
+            nonlocal_reinject[0] = None
+            new_cue_text = (new_cue_text + " | " if new_cue_text else "") + replay
+            trace.log("alert", tick=tick, code="cue-reinject",
+                      message=f"watchdog re-injecting {replay!r}")
+            plan_memory = None  # wipe the stuck plan so the cue reinstalls fresh
         cue = new_cue_text or None
         if cue:
             transcript.append(cue)
@@ -276,7 +426,17 @@ async def rehearse(
                 trace.log("alert", tick=tick, code="deterministic-plan",
                           message=f"classified as '{det_case}' — {len(steps)} computed step(s), no LLM")
             else:
-                steps = await decompose(new_cue_text, planner, pose=pose)
+                # Try compound splitting before falling through to LLM.
+                calibration = cfg.get("robot", {}).get("calibration")
+                world_objs = {n: o for n, o in robot.objects.items()} if hasattr(robot, "objects") else None
+                compound_steps = split_compound_cue(new_cue_text, pose, safety, calibration, world_objs)
+                if compound_steps:
+                    steps = compound_steps
+                    det_case = "compound-deterministic"
+                    trace.log("alert", tick=tick, code="deterministic-plan",
+                              message=f"compound split — {len(steps)} computed step(s), no LLM")
+                else:
+                    steps = await decompose(new_cue_text, planner, pose=pose, safety=safety)
             if steps:
                 if not det_case:
                     # Validate LLM-generated plan via a second LLM call.
@@ -320,6 +480,8 @@ async def rehearse(
             _emit_world_state(trace, tick, robot)
             trace.log("idle", tick=tick)
             m.ticks_run = tick
+            if _watchdog_check(tick):
+                break
             continue
 
         if real_mode and real_cam is not None:
@@ -350,13 +512,27 @@ async def rehearse(
         current_step = plan_memory.current() if plan_memory else None
         if current_step is not None and current_step.tool is not None:
             # Obstacle check before pre-baked execution (if VLM runs every tick).
+            # Skip it when the active step was generated by A* — that path is
+            # already collision-free and reactive dodging just corrupts it.
+            step_is_astar = bool(
+                current_step.tool.get("meta", {}).get("from_astar", False))
             vlm_mode = cfg["vlm"].get("run_mode", "every_tick")
-            if vlm_mode == "every_tick":
-                obs = await vlm.observe(frame)
+            if vlm_mode == "every_tick" and not step_is_astar:
+                if pipeline_parallel:
+                    obs_res, _elapsed, _err = await _pipelined_observe(frame)
+                    if _elapsed is not None:
+                        m.vlm_ms.append(_elapsed)
+                    if _err is not None:
+                        m.vlm_parse_failures += 1
+                        obs = type("O", (), {"model_dump": lambda self, _e=_err: {"error": _e}})()
+                    else:
+                        obs = obs_res
+                else:
+                    obs = await vlm.observe(frame)
                 obs_dict = obs.model_dump() if hasattr(obs, "model_dump") else {}
                 state = await (real_robot or robot).get_state()
                 avoidance_steps = check_obstacle_avoidance(
-                    obs_dict, state.pose, cfg.get("robot", {}).get("safety", {}))
+                    obs_dict, state.pose, _safety_with_calibration(cfg))
                 if avoidance_steps:
                     trace.log("alert", tick=tick, code="obstacle-detected",
                               message=f"obstacle ahead during pre-baked plan — injecting {len(avoidance_steps)}-step avoidance")
@@ -413,18 +589,32 @@ async def rehearse(
         vlm_mode = cfg["vlm"].get("run_mode", "every_tick")
         run_vlm = (vlm_mode == "every_tick") or bool(live_text)
         if run_vlm:
-            t0 = time.time()
             trace.log("status", tick=tick, state="vlm_thinking")
-            try:
-                obs = await vlm.observe(frame)
-                _elapsed = (time.time() - t0) * 1000
-                m.vlm_ms.append(_elapsed)
-                trace.log("status", tick=tick, state="vlm_done", ms=round(_elapsed))
-            except Exception as exc:
-                m.vlm_parse_failures += 1
-                err = str(exc)
-                obs = type("O", (), {"model_dump": lambda self, _e=err: {"error": _e}})()
-                trace.log("status", tick=tick, state="vlm_error", error=err)
+            if pipeline_parallel:
+                obs_res, _elapsed, _err = await _pipelined_observe(frame)
+                if _err is not None:
+                    m.vlm_parse_failures += 1
+                    obs = type("O", (), {"model_dump": lambda self, _e=_err: {"error": _e}})()
+                    trace.log("status", tick=tick, state="vlm_error", error=_err)
+                elif _elapsed is None:
+                    obs = obs_res
+                    trace.log("status", tick=tick, state="vlm_warmup")
+                else:
+                    obs = obs_res
+                    m.vlm_ms.append(_elapsed)
+                    trace.log("status", tick=tick, state="vlm_done", ms=round(_elapsed), pipelined=True)
+            else:
+                t0 = time.time()
+                try:
+                    obs = await vlm.observe(frame)
+                    _elapsed = (time.time() - t0) * 1000
+                    m.vlm_ms.append(_elapsed)
+                    trace.log("status", tick=tick, state="vlm_done", ms=round(_elapsed))
+                except Exception as exc:
+                    m.vlm_parse_failures += 1
+                    err = str(exc)
+                    obs = type("O", (), {"model_dump": lambda self, _e=err: {"error": _e}})()
+                    trace.log("status", tick=tick, state="vlm_error", error=err)
         else:
             obs = type("O", (), {"model_dump": lambda self: {"scene": "(skipped; plan executing)"}})()
 
@@ -432,7 +622,7 @@ async def rehearse(
 
         # Obstacle avoidance check — runs after every observation (mock or real VLM).
         obs_dict = obs.model_dump() if hasattr(obs, "model_dump") else obs.model_dump()
-        avoidance_steps = check_obstacle_avoidance(obs_dict, state.pose, cfg.get("robot", {}).get("safety", {}))
+        avoidance_steps = check_obstacle_avoidance(obs_dict, state.pose, _safety_with_calibration(cfg))
         if avoidance_steps:
             trace.log("alert", tick=tick, code="obstacle-detected",
                       message=f"obstacle ahead — injecting {len(avoidance_steps)}-step avoidance")
@@ -572,17 +762,33 @@ async def rehearse(
         cur_success = why if ok else f"checking — {why}"
         if ok:
             break
+        if _watchdog_check(tick):
+            m.ticks_run = tick
+            break
 
     ok, why = _evaluate(scenario, robot, m.tool_calls)
+    if not ok and stall_triggered and not why.startswith("FAIL"):
+        why = f"FAIL stalled | {why}"
     m.success = ok
     m.success_reason = why
     # Final frame annotation — either PASS (green) or a terminal FAIL (red).
-    cur_success = why if ok else f"FAIL — {why}"
+    # If `why` already starts with "FAIL", keep it as-is to avoid doubling.
+    if ok:
+        cur_success = why
+    else:
+        cur_success = why if why.startswith("FAIL") else f"FAIL — {why}"
     final = _annotate_frame(robot.render_frame(), m.ticks_run, total_ticks, None, m.tool_calls,
                             last_action_label, cur_success, scenario.name)
     cv2.imwrite(str(last_frame_path), final)
     if robot.clamp_events:
         trace.log("clamp_summary", count=len(robot.clamp_events), events=robot.clamp_events)
+    # Drain any pipelined VLM task so it doesn't linger past the run.
+    if vlm_task is not None and not vlm_task.done():
+        vlm_task.cancel()
+        try:
+            await vlm_task
+        except (asyncio.CancelledError, Exception):
+            pass
     trace.log("stop", success=ok, reason=why)
     trace.close()
     # Write correctness report for this rehearsal.
