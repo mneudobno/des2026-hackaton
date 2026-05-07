@@ -51,9 +51,9 @@ For ops detail (recon checklist, port assignments, latency budget), see
 | **Nemotron 3 Nano Omni** | ✅ default LLM **and** VLM | Multimodal (text + image + audio + video → text). Single endpoint. |
 | **Qwen 3.6 35B A3B** | ⚠ verify; LLM-only fallback | Text + image only, no audio. Sampling-sensitive. |
 | **llama.cpp `llama-server`** | 🟡 fallback (not auto-detected by us) | Speaks `/v1/chat/completions` on `:8080` by default. Manual config swap if needed. |
-| **HP ZGX Toolkit** | ⚪ ignore | VS Code extension. Client-side. We use SSH. |
+| **HP ZGX Toolkit** | ⚪ ignore (forced) | VS Code extension. **x86-only** (Windows 11 / Ubuntu 24.04 — not Mac). Decision is structural, not preferential. We use SSH + our own bootstrap. |
 | **OpenCode** (`sst/opencode`) | ⚪ ignore | TUI coding agent. We use Claude Code. |
-| **Ollama** (laptop) | ✅ Mac-dev fallback (NOT on ZGX) | Pre-installed on Timur's laptop. The ZGX path uses vLLM. |
+| **Ollama** (laptop AND ZGX) | ✅ multi-tier fallback | Pre-installed on Timur's laptop AND **also pre-installed on the ZGX** by the HP ZGX Toolkit defaults (per HP's onboard docs). Tertiary fallback if both vLLM and llama-server are down on the ZGX. |
 
 ---
 
@@ -98,16 +98,18 @@ For ops detail (recon checklist, port assignments, latency budget), see
 - **Pivot config**: see `configs/agent.llama-server.yaml` (just a base_url
   swap from `:8000/v1` to `:8080/v1`).
 
-### 3.3 Ollama (Mac dev)
+### 3.3 Ollama (laptop AND ZGX)
 
-- **Default port**: `11434`. **Not on the ZGX** — Mac-only.
+- **Default port**: `11434`. Pre-installed on Timur's laptop (Mac dev) **and** on the ZGX (per HP ZGX Toolkit defaults).
 - **Endpoints**: `/api/generate` (text), `/api/generate` with `images: []`
   (multimodal). Different shape from OpenAI; `OllamaLLM`/`OllamaVLM`
   handle it.
-- **When we use it**: laptop rehearsals, day-of fallback if both ZGX
-  boxes are unreachable.
+- **When we use it**:
+  - **Laptop** — rehearsals + ultimate fallback if both ZGX boxes are unreachable.
+  - **ZGX** — tertiary fallback if both vLLM (`:8000/v1`) and llama-server (`:8080/v1`) are down on the ZGX. Probe with `curl http://<zgx>:11434/api/tags`.
 - **Models on the laptop**: `qwen2.5:7b`, `qwen2.5vl:7b`, `phi3:mini`,
   `qwen2.5:1.5b` (verify with `ollama list`).
+- **Models on the ZGX**: unknown until day-of — run `curl http://<zgx>:11434/api/tags | jq -r '.models[].name'` to enumerate.
 
 ---
 
@@ -190,7 +192,7 @@ containers — different process, same OpenAI-compatible HTTP shape.
 
 **Enumerate on the box**:
 ```
-docker ps --format 'table {{.Names}}\t{{.Ports}}\t{{.Image}}'
+podman ps --format 'table {{.Names}}\t{{.Ports}}\t{{.Image}}'   # docker is NOT installed on the ZGX (Podman is the container engine, per HP defaults)
 ```
 
 NIMs we'd care about:
@@ -215,10 +217,14 @@ the env var is set.
 ### HP ZGX Toolkit
 
 A VS Code extension that automates Python venv setup, Ollama install,
-and similar dev-stack onboarding on Windows 11 / Ubuntu 24.04. It runs
-on the **client** (laptop), not the server. We do all of this manually
-via `scripts/bootstrap_zgx.sh`, so the toolkit adds no value for our
-flow. Ignore.
+PyTorch, JupyterLab, MLFlow, etc. on Windows 11 / Ubuntu 24.04 client
+laptops (per HP's onboard docs). It runs on the **client**, not the
+server, and explicitly **does not support macOS** — so even if we
+wanted it, we couldn't use it. Side-effect of the ZGX shipping with the
+toolkit's defaults pre-installed: **the ZGX itself has Ollama, Podman,
+PyTorch, uv, MLFlow, JupyterLab, Streamlit, Gradio, OpenWebUI** ready
+to go. We don't need any of those for our flow, but Ollama-on-ZGX is
+the tertiary fallback noted in §3.
 
 ### OpenCode (`sst/opencode`)
 
@@ -245,7 +251,7 @@ the actual host or IP from organizer-provided sticky notes.
 nvidia-smi
 
 # 2. What's running
-docker ps --format 'table {{.Names}}\t{{.Ports}}\t{{.Image}}'
+podman ps --format 'table {{.Names}}\t{{.Ports}}\t{{.Image}}'   # docker is NOT installed on the ZGX (Podman is the container engine, per HP defaults)
 
 # 3. vLLM endpoint up + models served (THE most important check)
 curl -s http://<zgx>:8000/v1/models | jq '.data[].id'

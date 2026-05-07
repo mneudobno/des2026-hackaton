@@ -21,7 +21,7 @@ No component runs in the cloud during the judged run. That's both a rule ("local
 
 1. SSH into box A (primary) and box B (secondary). Note the IPs on a sticky note.
 2. `nvidia-smi` on both — confirm GB10 visible, memory free.
-3. `docker ps` — list of pre-installed NIM containers (record exact names; substitute below).
+3. `podman ps` — list of pre-installed containers (record exact names; substitute below). The ZGX uses **Podman**, not Docker, per the HP ZGX Toolkit's defaults.
 4. `ollama list` — see what's already pulled.
 5. `df -h` — confirm room for model pulls (Q: 14B ≈ 9 GB, VL 7B ≈ 5 GB).
 6. From laptop: `ssh-add` your key, then `hack serve status --host <ip>`.
@@ -84,7 +84,7 @@ ZGX boxes ship with: **HP ZGX Toolkit, NVIDIA AI Enterprise, Nemotron, vLLM, lla
 Quick on-site checks:
 ```bash
 curl -s http://localhost:8000/v1/models | jq .          # list served models
-docker ps --format 'table {{.Names}}\t{{.Ports}}\t{{.Image}}'  # see container layout
+podman ps --format 'table {{.Names}}\t{{.Ports}}\t{{.Image}}'   # see container layout (NOT docker — ZGX uses Podman)
 ```
 
 Then update `configs/agent.yaml` `llm.provider: openai-compat`, `model: <id from above>`, `base_url: http://<zgx-ip>:8000/v1`.

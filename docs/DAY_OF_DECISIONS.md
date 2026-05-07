@@ -26,7 +26,7 @@ The organizer email confirms vLLM is pre-installed on ZGX with **Nemotron 3 Nano
 |---|---|---|
 | vLLM serves Nemotron Omni (multimodal) | Set BOTH `llm` and `vlm` to `provider: openai-compat`, `model: <omni tag from /v1/models>`, `base_url: http://<zgx-a>:8000/v1`. One endpoint serves both roles. | `configs/agent.yaml` |
 | vLLM serves Qwen A3B only (no usable VLM on ZGX) | `llm.provider: openai-compat`, `model: <qwen tag>`, `base_url: http://<zgx-a>:8000/v1`. Keep `vlm.provider: ollama`, `model: qwen2.5vl:7b` on the laptop (extra hop, ~500ms). | `configs/agent.yaml` |
-| vLLM down, NIM containers present | `provider: openai-compat`, `model: <id from docker ps>`, `base_url: http://<zgx-a>:<nim-port>/v1` | `configs/agent.yaml` |
+| vLLM down, NIM containers present | `provider: openai-compat`, `model: <id from `podman ps`>`, `base_url: http://<zgx-a>:<nim-port>/v1` | `configs/agent.yaml` |
 | vLLM and NIM both down, Ollama only | `llm.provider: ollama`, `model: qwen2.5:14b-instruct`, `base_url: http://<zgx-a>:11434`. `vlm.provider: ollama`, `model: qwen2.5vl:7b`. Pull happens in `bootstrap_zgx.sh`. | `configs/agent.yaml` |
 | Nothing installed (worst case) | Ollama fallback as above — our bootstrap pulls it | — |
 
