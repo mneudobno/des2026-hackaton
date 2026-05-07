@@ -98,11 +98,29 @@ At event start, in order:
 
 Use `.claude/skills/` entries when they match — do not reinvent their steps:
 
+**Setup / kickoff**
 - `day-of-brief` — turn `docs/DAY_OF_BRIEF.md` into missing-facts list + config edits + first three tasks. Trigger: *"process the brief"* after the intro.
-- `robot-adapter` — wiring a new robot SDK
-- `agent-prompt` — prompt iteration via replay
-- `zgx-bootstrap` — bringing up the ZGX Nano serving stack
-- `demo-polish` — final submission prep
+- `recon-summary` — run `hack recon` on both ZGX boxes and produce a 5-line summary + the next config edit. Trigger: *"recon"*, *"what's on the ZGX"*.
+- `zgx-bootstrap` — bring up the ZGX Nano serving stack from cold.
+
+**Build window (mid-flight)**
+- `robot-adapter` — wire a new RobotAdapter once the SDK is known.
+- `swap-llm` — swap LLM/VLM provider/model/base_url in `configs/agent.yaml` + smoke test. Trigger: *"swap LLM"*, *"flip to ZGX-B"*, *"fall back to laptop VLM"*.
+- `agent-prompt` — prompt iteration via JSONL replay.
+- `watch-rehearsal` — auto-monitors rehearsal logs (already on; mandatory).
+
+**Cut-list / submit**
+- `cut-list` — when behind schedule, owns the cut order so the team doesn't debate. Trigger: *"we're behind"*, *"T+1:30"*, *"drop audio"*.
+- `demo-polish` — final 20-minute submission prep.
+
+## Parallel work via subagents
+
+Spawn `Agent(subagent_type="Explore", ...)` ad-hoc — no skill required — when:
+- The robot is revealed and someone needs to read an unknown SDK while another teammate keeps building.
+- A research question would dump >2 KB of search output into the main context (delegate, get a summary).
+- Two independent investigations can run at once — send both Agent calls in a single message so they run in parallel.
+
+Do **not** spawn subagents for: simple greps (use Bash), single-file reads (use Read), or anything where the answer is one tool call away.
 
 ## Working in this repo (Claude Code)
 
