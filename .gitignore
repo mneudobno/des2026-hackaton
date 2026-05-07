@@ -7,7 +7,8 @@ __pycache__/
 dist/
 build/
 *.egg-info/
-runs/
+runs/*
+!runs/submit-backup.jsonl
 .env
 .DS_Store
 .claude/settings.local.json

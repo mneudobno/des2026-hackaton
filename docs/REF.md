@@ -207,7 +207,7 @@ If the clock and your progress disagree, **say "we're behind"** to Claude — do
 | T+1:00 mic flaky | Drop audio in. Type cues into TUI instead. |
 | T+1:15 TTS laggy | Drop robot voice. Show subtitles. |
 | T+1:30 two-host brittle | Single ZGX. Drop failover list. |
-| T+1:45 robot crashing | MockRobot + recorded video. Last resort. |
+| T+1:45 robot crashing | MockRobot + `uv run hack agent replay runs/submit-backup.jsonl` — same dashboard, identical to live. Last resort. |
 
 **Never cut:** dashboard, JSONL logging, the adapter contract.
 

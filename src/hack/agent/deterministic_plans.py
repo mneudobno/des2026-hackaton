@@ -33,6 +33,9 @@ def classify_cue(cue: str) -> str | None:
     Keyword check only — no LLM. For compound detection use `classify_cue_with_llm`.
     """
     c = cue.lower().strip()
+    # Personality intro — pre-baked greeting (must precede other matchers).
+    if _is_personality_intro(c):
+        return "personality_intro"
     # Navigate to a named target (goal, cube, bin, etc.)
     if _is_navigate_to_target(c):
         return "navigate_to_target"
@@ -183,6 +186,18 @@ def _is_return_cue(c: str) -> bool:
         "to initial position", "to original position", "to starting position",
     )
     return any(k in c for k in return_kws)
+
+
+def _is_personality_intro(c: str) -> bool:
+    """Match canonical greeting phrasings only — keep narrow to avoid colliding
+    with navigation cues like 'go to the cube and say hi'."""
+    canon = (
+        "introduce yourself", "introduce yourselves",
+        "say hi", "say hello", "say hey",
+        "who are you", "what's your name", "whats your name",
+        "wave hello", "wave hi",
+    )
+    return any(k in c for k in canon)
 
 
 def _is_navigate_to_target(c: str) -> bool:
@@ -729,6 +744,55 @@ def _navigate_forward_walk(
     return steps
 
 
+def _gen_personality_intro(
+    cue: str,
+    pose: tuple[float, float, float],
+    safety: dict[str, float],
+) -> list[PlanStep]:
+    """Theatrical opener: anchor origin, wave, speak team name, nod.
+
+    Used as the first cue of the judged demo so the audience hears a
+    person-shaped intro before any task logic. No motion budget consumed —
+    only `remember`, `emote`, `speak` tools.
+    """
+    return [
+        PlanStep(
+            text="remember starting pose as origin",
+            tool={
+                "name": "remember",
+                "args": {"key": "origin", "value": "current_pose"},
+                "rationale": "anchor return target",
+            },
+        ),
+        PlanStep(
+            text="wave to the audience",
+            tool={
+                "name": "emote",
+                "args": {"label": "wave"},
+                "rationale": "greeting gesture",
+            },
+        ),
+        PlanStep(
+            text="introduce the team",
+            tool={
+                "name": "speak",
+                "args": {
+                    "text": "Hi, I'm a robot agent. I'm here with team Just Build at the DIS hackathon.",
+                },
+                "rationale": "verbal team intro",
+            },
+        ),
+        PlanStep(
+            text="acknowledge with a nod",
+            tool={
+                "name": "emote",
+                "args": {"label": "nod"},
+                "rationale": "punctuation gesture",
+            },
+        ),
+    ]
+
+
 _GENERATORS: dict[str, Any] = {
     "return_to_origin": _gen_return_to_origin,
     "rotate_degrees": _gen_rotate_degrees,
@@ -736,6 +800,7 @@ _GENERATORS: dict[str, Any] = {
     "numbered_walk": _gen_numbered_walk,
     "walk_circle": _gen_walk_circle,
     "navigate_to_target": _gen_navigate_to_target,
+    "personality_intro": _gen_personality_intro,
 }
 
 

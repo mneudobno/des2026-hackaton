@@ -312,6 +312,42 @@ def monitor(
     console.print(mon.summarise())
 
 
+# ---------- commentate (live narration) ----------
+@app.command()
+def commentate(
+    trace: Path = typer.Option(None, "--trace", help="JSONL trace to tail. Default: newest in runs/."),
+    config: Path = typer.Option(Path("configs/agent.yaml"), "--config", help="Source of the LLM block."),
+    follow: bool = typer.Option(True, "--follow/--no-follow", help="Tail live (start-from-end) or replay from start."),
+) -> None:
+    """Live commentary — narrate the agent's JSONL events in plain English.
+
+    Run as a third pane alongside `hack tui` and `hack agent run` for the
+    judged demo. The audience sees one sentence per agent decision via the
+    same LLM the agent uses. Demo-additive: kill the pane if it's slow.
+    """
+    import yaml as _yaml
+
+    from hack.agent.commentator import commentate as _commentate
+    from hack.models import make_llm
+
+    runs_dir = Path("runs")
+    if trace is None:
+        candidates = list(runs_dir.glob("rehearsal-*.jsonl")) + list(runs_dir.glob("agent-*.jsonl"))
+        if not candidates:
+            console.print("[red]no JSONL traces found in runs/[/]")
+            raise typer.Exit(1)
+        trace = max(candidates, key=lambda p: p.stat().st_mtime)
+
+    cfg = _yaml.safe_load(config.read_text())
+    llm = make_llm(cfg["llm"])
+    console.print(f"[cyan]commentating[/] {trace}  [dim]({llm.name} · {llm.model})[/]")
+
+    try:
+        asyncio.run(_commentate(trace, llm, sink=console.print, follow=follow))
+    except KeyboardInterrupt:
+        console.print("\n[dim]commentary stopped[/]")
+
+
 # ---------- regression (cue test suite) ----------
 @app.command()
 def regression(

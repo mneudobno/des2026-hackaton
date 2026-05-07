@@ -20,6 +20,7 @@ from typing import Callable
 
 import yaml
 
+from hack.agent.deterministic_plans import classify_cue_smart, generate_plan
 from hack.agent.plan_memory import PlanStep, decompose, expand_plan_steps
 from hack.agent.planner import OllamaPlanner
 from hack.models import make_llm
@@ -57,6 +58,14 @@ CASES: list[CueCase] = [
         max_steps=30,
         check_plan=lambda steps, safety: _check_random_and_back(steps, safety),
     ),
+    CueCase(
+        name="personality_intro",
+        cue="introduce yourself",
+        expected_tools={"emote", "speak", "remember"},
+        min_steps=3,
+        max_steps=8,
+        check_plan=lambda steps, safety: _check_personality_intro(steps, safety),
+    ),
 ]
 
 
@@ -81,6 +90,21 @@ def _check_spin_360(steps: list[PlanStep], safety: dict) -> tuple[bool, str]:
     if abs(total_theta) < target * 0.8 or abs(total_theta) > target * 1.3:
         return False, f"total dtheta={total_theta:.2f} rad; expected ≈±2π ({target:.2f})"
     return True, f"{baked} baked move steps, Σdtheta={total_theta:+.2f} rad ≈ {math.degrees(total_theta):+.0f}°"
+
+
+def _check_personality_intro(steps: list[PlanStep], safety: dict) -> tuple[bool, str]:
+    """Personality intro must include team-name speech + emote + remember anchor."""
+    spoken = " ".join(
+        ((s.tool or {}).get("args") or {}).get("text", "")
+        for s in steps if s.tool and s.tool.get("name") == "speak"
+    ).lower()
+    if "just build" not in spoken:
+        return False, f"speak step missing team name 'Just Build' (heard: {spoken[:80]!r})"
+    tool_names = {s.tool.get("name") for s in steps if s.tool}
+    missing = {"emote", "speak", "remember"} - tool_names
+    if missing:
+        return False, f"intro plan missing tool(s): {sorted(missing)}"
+    return True, f"{len(steps)} steps; team intro voiced"
 
 
 def _check_random_and_back(steps: list[PlanStep], safety: dict) -> tuple[bool, str]:
@@ -112,8 +136,15 @@ async def run_one(case: CueCase, config_path: Path) -> CueResult:
         max_tool_calls=cfg["agent"].get("max_tool_calls_per_turn", 4),
     )
     t0 = time.time()
-    steps = await decompose(case.cue, planner)
-    steps = expand_plan_steps(steps, cfg.get("robot", {}).get("safety", {}))
+    # Mirror runtime routing: deterministic case first, LLM decomposer as fallback.
+    safety = cfg.get("robot", {}).get("safety", {})
+    calibration = cfg.get("robot", {}).get("calibration", {})
+    det_case = await classify_cue_smart(case.cue, planner)
+    if det_case is not None:
+        steps = generate_plan(det_case, case.cue, (0.0, 0.0, 0.0), safety, calibration)
+    else:
+        steps = await decompose(case.cue, planner)
+    steps = expand_plan_steps(steps, safety)
     decompose_ms = (time.time() - t0) * 1000
     if not steps:
         return CueResult(case, [], False, "decompose returned 0 steps", decompose_ms)

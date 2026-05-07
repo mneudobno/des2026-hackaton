@@ -68,7 +68,7 @@ See also: [`REF.md`](./REF.md) (day-of command card), [`DEMO_SCRIPT.md`](./DEMO_
 - [ ] ⏳ Full `uv run hack agent run --robot mock` end-to-end (webcam → real VLM → real LLM → MockRobot) — blocked on pulls
 - [ ] ⬜ `uv run hack sensors camera --show` — live preview on laptop
 - [ ] ⬜ `uv run hack sensors mic --transcribe` — live STT on laptop (downloads Whisper on first run, ~500 MB)
-- [ ] ⬜ Measure end-to-end latency: webcam → VLM → planner → action. Target <2 s. Log result here: **TBD ms**
+- [x] ✅ Measure end-to-end latency on Mac+Ollama+qwen2.5:7b (2026-05-07): LLM decompose 4.5s simple / 13.8s compound (per regression run); single chit-chat cue end-to-end ~42 s. **5 Hz tick rate is impossible on Mac+Ollama** — day-of needs Nemotron on ZGX (target <500ms per LLM call). If ZGX dies and we fall back to profile D (Mac+Ollama), drop `agent.tick_hz` from 5 to 1 and accept slow demo. Recorded in `runs/regression-latest.json` and `runs/rehearsal-chit-chat-1778186*.json`.
 - [ ] ⬜ Record one clean `hack demo record` run, play it back via `hack demo play`
 
 ## 5. Teammate onboarding (for Kamila + Simon)

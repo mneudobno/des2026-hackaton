@@ -14,6 +14,7 @@ plan.
 
 | At | Symptom | Cut to apply |
 |---|---|---|
+| Anytime | `hack commentate` pane is slow, wrong, or distracting | **Cut #0: Kill commentator pane** (Ctrl+C in pane 3 — agent and dashboard keep running, demo unaffected) |
 | T+1:00 if behind | Audio loop flaky, mic drops cues, STT errors | **Cut #1: Drop audio input** |
 | T+1:15 if behind | TTS stutter, voice loop adds latency | **Cut #2: Drop TTS** |
 | T+1:30 if behind | Two-host orchestration is brittle, failover noisy | **Cut #3: Drop second ZGX** |
@@ -90,7 +91,8 @@ should still hit grade B or better. Note latency in `docs/REHEARSALS.md`.
 
 ## Cut #4 — Drop live robot (last resort)
 
-MockRobot inside the runtime + a recorded video for the judge demo.
+MockRobot inside the runtime + replay a known-good JSONL trace for the
+judge demo.
 
 **Edits:**
 ```yaml
@@ -98,12 +100,24 @@ MockRobot inside the runtime + a recorded video for the judge demo.
 robot:
   adapter: mock                # was: reachy_mini / unitree_go2 / http
 ```
-Locate the most recent successful real-robot trace under `runs/`:
+
+**Replay artifact, in priority order:**
+1. **`runs/submit-backup.jsonl`** — the pre-event canonical fallback trace
+   (committed to the repo; not gitignored). Captured T-2 days from a clean
+   `obstacle-corridor` rehearsal: grade A, 0 collisions, success ✅.
+   This always works. Use first.
+2. The most recent successful real-robot trace (only if available):
+   ```
+   ls -t runs/rehearsal-*.jsonl runs/agent-*.jsonl 2>/dev/null | head -3
+   ```
+
+Run replay for the live narration:
 ```
-ls -t runs/agent-*.jsonl | head -3
+uv run hack agent replay runs/submit-backup.jsonl
 ```
-Use `uv run hack agent replay <best>.jsonl` for the live narration.
-Keep one printed video file path on the judge handoff sheet.
+
+Keep one printed video file path on the judge handoff sheet as a
+secondary backup if replay also fails.
 
 **Smoke test:** `uv run hack agent run --robot mock --duration 20` should
 produce a clean trace with plan + action events.
