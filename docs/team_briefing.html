@@ -781,6 +781,14 @@
             <div class="tl-time">10:50</div><div class="tl-dot"></div>
             <div class="tl-what">Build window opens. Timur starts coding. <strong>Time keeper announces every 15 min.</strong> <span class="role">All</span></div>
           </div>
+          <div class="tl-row">
+            <div class="tl-time">T+0:15</div><div class="tl-dot"></div>
+            <div class="tl-what"><strong>Probe the robot.</strong> Claude runs <code>hack robot probe</code>; must be green before anything else. <span class="role">Timur</span></div>
+          </div>
+          <div class="tl-row">
+            <div class="tl-time">T+0:30</div><div class="tl-dot"></div>
+            <div class="tl-what"><strong>Calibrate the robot — Claude-driven.</strong> Timur says <code>/calibrate</code>; Claude asks 10 measurement questions (drift, footprint, clearance), writes <code>configs/agent.local.yaml</code>, smoke-tests. <strong>Five minutes; do not skip.</strong> <span class="role">Timur / Claude</span></div>
+          </div>
           <div class="tl-row peak">
             <div class="tl-time">T+1:00</div><div class="tl-dot"></div>
             <div class="tl-what"><strong>First cut-decision moment</strong> if audio is flaky. Cut-list enforcer evaluates. <span class="role">Cut enforcer</span></div>

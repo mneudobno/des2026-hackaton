@@ -29,8 +29,11 @@ from hack.models import make_llm
 class CueCase:
     name: str
     cue: str
-    # Pre-decompose check — given the decomposed `steps`, return (ok, reason).
-    check_plan: Callable[[list[PlanStep]], tuple[bool, str]] | None = None
+    # Pre-decompose check — given the decomposed `steps` and the active robot
+    # safety dict, return (ok, reason). Safety is passed in so checkers can
+    # adapt to the configured per-tick limits (e.g. expected step count for a
+    # full spin scales with MAX_ANG).
+    check_plan: Callable[[list[PlanStep], dict], tuple[bool, str]] | None = None
     expected_tools: set[str] = field(default_factory=set)  # tools that must appear in the plan
     min_steps: int = 1
     max_steps: int = 20
@@ -41,9 +44,9 @@ CASES: list[CueCase] = [
         name="spin_360",
         cue="spin 360",
         expected_tools={"move"},
-        min_steps=6,   # 6.28 rad / 0.6 rad per step ≈ 11 steps
+        min_steps=3,   # loose floor; precise per-safety count is in _check_spin_360.
         max_steps=15,
-        check_plan=lambda steps: _check_spin_360(steps),
+        check_plan=lambda steps, safety: _check_spin_360(steps, safety),
     ),
     CueCase(
         name="go_to_random_and_back",
@@ -52,7 +55,7 @@ CASES: list[CueCase] = [
         min_steps=3,
         # After auto-split, a 2m walk expands into ~10 chunks; allow up to 30 total.
         max_steps=30,
-        check_plan=lambda steps: _check_random_and_back(steps),
+        check_plan=lambda steps, safety: _check_random_and_back(steps, safety),
     ),
 ]
 
@@ -65,19 +68,22 @@ def _total_dtheta(steps: list[PlanStep]) -> float:
     return total
 
 
-def _check_spin_360(steps: list[PlanStep]) -> tuple[bool, str]:
+def _check_spin_360(steps: list[PlanStep], safety: dict) -> tuple[bool, str]:
     baked = sum(1 for s in steps if s.tool and s.tool.get("name") == "move")
     total_theta = _total_dtheta(steps)
     target = 2 * math.pi
-    # Allow a ±20% tolerance around 2π, and require at least 6 baked move steps.
-    if baked < 6:
-        return False, f"only {baked} pre-baked move steps (need ≥6)"
+    # Required step count scales with the configured per-tick angular limit:
+    # a full 2π spin needs ceil(2π / MAX_ANG) chunks under expand_plan_steps().
+    max_ang = float(safety.get("max_angular_speed", 0.6))
+    expected_min = math.ceil(target / max_ang) if max_ang > 0 else 6
+    if baked < expected_min:
+        return False, f"only {baked} pre-baked move steps (need ≥{expected_min} for max_ang={max_ang})"
     if abs(total_theta) < target * 0.8 or abs(total_theta) > target * 1.3:
         return False, f"total dtheta={total_theta:.2f} rad; expected ≈±2π ({target:.2f})"
     return True, f"{baked} baked move steps, Σdtheta={total_theta:+.2f} rad ≈ {math.degrees(total_theta):+.0f}°"
 
 
-def _check_random_and_back(steps: list[PlanStep]) -> tuple[bool, str]:
+def _check_random_and_back(steps: list[PlanStep], safety: dict) -> tuple[bool, str]:
     tool_names = [s.tool.get("name") if s.tool else None for s in steps]
     texts = " | ".join(s.text.lower() for s in steps)
     has_remember = "remember" in tool_names or any(k in texts for k in ("remember", "recall", "origin"))
@@ -124,7 +130,7 @@ async def run_one(case: CueCase, config_path: Path) -> CueResult:
                              f"missing expected tools {sorted(case.expected_tools)}",
                              decompose_ms)
     if case.check_plan:
-        ok, reason = case.check_plan(steps)
+        ok, reason = case.check_plan(steps, cfg.get("robot", {}).get("safety", {}))
         return CueResult(case, steps, ok, reason, decompose_ms)
     return CueResult(case, steps, True, "passed default checks", decompose_ms)
 

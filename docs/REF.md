@@ -10,7 +10,7 @@
 ## The four tools, in one sentence
 
 1. **Claude Code** — your captain. Tell it the situation; it runs the commands and tells you what to do next.
-2. **`hack tui`** — the live dashboard (terminal, no browser). The one thing you launch yourself.
+2. **`hack tui`** — the live dashboard + mic (terminal, no browser). One of two things you launch yourself day-of (the other is `hack agent run` — see *What you launch yourself* below).
 3. **`docs/DAY_OF_BRIEF.md`** — type everything organizers say here. Single file for both pre-event intro AND the 10:30 challenge briefing.
 4. **This file** — the cheat sheet. (For deep stack reference: [`docs/TECH_STACK.md`](./TECH_STACK.md) — what each pre-installed tool is, model details, verification punch-list.)
 
@@ -123,9 +123,9 @@ You don't type `hack` commands. You tell Claude the situation and it runs the ri
 | T+0:10 | "warm it up" | `hack serve warmup --host <zgx>` |
 | **T+0:10** | **"lock in the config"** or **"adopt the real setup"** | **Reads recon + `/v1/models` + brief decisions, writes the actual IPs/tags/adapter into `configs/agent.yaml`, runs `hack rehearse --scenario obstacle-corridor`, reports grade. This is the one moment placeholders become real values.** |
 | T+0:15 | "probe the robot" + adapter name | `hack robot probe --adapter <name>` — **must be green** before anything else |
-| T+0:30 | "calibrate the robot" | `hack calibrate --adapter <name>`, commits `linear_scale` / `angular_scale`. **Don't skip.** |
+| T+0:30 | "/calibrate" or "calibrate the robot" | Invokes the `/calibrate` skill — Claude walks all 10 `robot.safety` + `robot.calibration` knobs, runs `hack calibrate` for motion-scale tests, captures footprint from the tape measure, writes `configs/agent.local.yaml`, smoke-tests with `hack regression`. **Don't skip.** |
 | T+0:30 | (you launch this yourself) | Open `uv run hack tui` in a fresh terminal pane. Leave it running. |
-| T+0:45 | "first real-robot run" | `hack agent run --robot <name>` (you may need to launch this yourself in another pane) |
+| T+0:45 | "first real-robot run" | **You launch** `uv run hack agent run` in a second terminal pane (TUI keeps running in pane 1). Both feed off the same JSONL trace + `runs/live_cues.ndjson`. |
 | any | "smoke test" or "rehearse" | `hack rehearse --scenario obstacle-corridor` (~6 s) |
 | any | "did the prompt change break anything?" | `hack regression` (~10 s) |
 | T+1:30+ | "polish the demo" or "final take" | Invokes the `demo-polish` skill |
@@ -149,15 +149,17 @@ If you're unsure of a phrase, **describe the situation in your own words.** Clau
 
 ## What you launch yourself
 
-Three things Claude can't drive — you start them in their own terminal pane:
+Two things Claude truly can't drive (interactive UI / policy-denied) plus one thing **you** own day-of even though Claude can technically smoke-test it:
 
-| Tool | Command | Why you launch it |
+| Tool | Command | Who runs it |
 |---|---|---|
-| **TUI dashboard** | `uv run hack tui` | Interactive (Ctrl+M / Ctrl+R / Ctrl+O / Ctrl+K). Claude can't send keystrokes. |
-| **Live agent loop** (real robot) | `uv run hack agent run --robot <name>` | Long-running; you watch the world map and stop it when needed. |
-| **`git push`** | `git push` | Denied to Claude by your project policy — push happens by you. |
+| **TUI dashboard** | `uv run hack tui` | **You only.** Interactive (Ctrl+M / Ctrl+R / Ctrl+O / Ctrl+K) — Claude can't send keystrokes. |
+| **Live agent loop** (real robot) | `uv run hack agent run` | **You for the judged take.** You watch the world map / dashboard and stop when a take is clean — Claude can't see the robot or judge "this is the one." Claude *can* boot it briefly in the background to verify the production path is healthy (e.g. before the judged run). Reads `robot.adapter:` from `configs/agent.yaml` (set earlier by the `day-of-brief` skill); valid values `mock` / `http` / `ros2` / `lerobot` / `reachy_mini` / `unitree_go2`; override one-off with `--robot <adapter>`. |
+| **`git push`** | `git push` | **You only.** Denied to Claude by project policy. |
 
 Everything else (doctor, recon, bootstrap, serve, probe, calibrate, rehearse, regression, demo record, git tag) — Claude runs them.
+
+For day-to-day dev (today, T-2 days), you don't run `hack agent run` at all — use `hack rehearse <scenario>` (scripted, deterministic, ~6s) or `hack tui` (interactive, mic-driven). `agent run` is only meaningful day-of with a real robot + real cues.
 
 ---
 
@@ -218,10 +220,10 @@ If the clock and your progress disagree, **say "we're behind"** to Claude — do
 | `hack doctor` red on Ollama | `brew services start ollama` |
 | `hack robot probe` fails | Don't edit runtime — it's the adapter file. Re-read SDK sample. |
 | Latency > 2 s | Drop `agent.tick_hz` from 5 to 3. Or smaller LLM via **swap-llm**. |
-| Robot moves crooked | You skipped calibrate. Run `hack calibrate --adapter <name>`. |
+| Robot moves crooked | You skipped calibrate. Say `/calibrate` to Claude (or run `hack calibrate --adapter <name>` for scales only). |
 | Plan has 1 step instead of 6 | LLM too small. Confirm Nemotron / Qwen tag with `curl :8000/v1/models`. |
 | Cube doesn't land in bin | Same as above (planner spatial precision). |
-| Dashboard blank | TUI auto-tails newest JSONL — restart with `Ctrl+R` to start a fresh trace. |
+| Dashboard blank | TUI auto-tails newest JSONL. Day-of: check `hack agent run` is alive in pane 2 — restart it if not. Dev: `Ctrl+R` in TUI starts a fresh `hack rehearse`. |
 
 ---
 

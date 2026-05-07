@@ -24,7 +24,7 @@ The cases are defined in `src/hack/rehearsal/regression.py` (edit there to add/t
 **What it tests:** the decomposer respects per-tick safety limits by emitting multiple small-rotation steps that sum to a full 2π.
 
 **Pass criteria:**
-- ≥6 pre-baked `move` steps.
+- Pre-baked `move` step count ≥ `ceil(2π / robot.safety.max_angular_speed)` — i.e. enough chunks that no single step exceeds the configured per-tick angular cap. With `max_angular_speed=0.6` that's 11; with `1.8` it's 4.
 - Sum of `dtheta` across all steps is in `[0.8·2π, 1.3·2π]` (i.e. 288°–468°). Allows slack for the decomposer rounding.
 
 **Why it matters:** catches the single-step-turn regression where the whole rotation compresses into one oversized `dtheta` and gets clamped to ≤0.6 rad.

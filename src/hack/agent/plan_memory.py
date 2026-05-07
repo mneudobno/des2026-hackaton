@@ -23,6 +23,16 @@ if TYPE_CHECKING:
 
 MAX_STEP_RETRIES = 3
 
+# Single source of truth for the per-tick safety fallback. Used only when a
+# caller doesn't pass a safety dict (rare — `runner._safety_with_calibration`
+# always does). Values mirror `robot.safety` in `configs/agent.yaml`; if you
+# tune the YAML for a different robot, mirror the change here so fallbacks
+# don't silently diverge.
+DEFAULT_SAFETY: dict[str, float] = {
+    "max_linear_speed": 0.9,   # m/s — matches configs/agent.yaml
+    "max_angular_speed": 1.8,  # rad/s — matches configs/agent.yaml
+}
+
 
 @dataclass
 class PlanStep:
@@ -129,6 +139,21 @@ _DECOMPOSE_SYSTEM_PROMPT = (
     "  - If the instruction is unintelligible, return empty steps.\n"
     "  - Do NOT invent instructions the user did not imply.\n"
     "\n"
+    "EXAMPLES (study the shape; do NOT copy distances/angles literally):\n"
+    "\n"
+    "  USER INSTRUCTION: 'wave to the audience'\n"
+    '  RESPONSE: {{"steps": [\n'
+    '    {{"text": "wave to audience", "tool": {{"name": "emote", "args": {{"label": "wave"}}, "rationale": "greeting gesture"}}}}\n'
+    "  ]}}\n"
+    "\n"
+    "  USER INSTRUCTION: 'wander a bit then come back to where you started'\n"
+    "  (compound cue — DO NOT collapse to a single 'return' step; emit anchor + wander + return)\n"
+    '  RESPONSE: {{"steps": [\n'
+    '    {{"text": "remember starting pose as origin", "tool": {{"name": "remember", "args": {{"key": "origin", "value": "current_pose"}}, "rationale": "anchor return target"}}}},\n'
+    '    {{"text": "wander forward a small step", "tool": {{"name": "move", "args": {{"dx": 0.3, "dy": 0.0, "dtheta": 0.0}}, "rationale": "explore outward"}}}},\n'
+    '    {{"text": "return toward the remembered origin", "tool": {{"name": "move", "args": {{"dx": -0.3, "dy": 0.0, "dtheta": 0.0}}, "rationale": "go back to origin"}}}}\n'
+    "  ]}}\n"
+    "\n"
     'Respond JSON only: {{"steps": [{{"text": "...", "tool": {{...}} or null}}, ...]}}.'
 )
 
@@ -174,8 +199,8 @@ async def decompose(
     return_dy = -(-x) * _m.sin(th) + (-y) * _m.cos(th)
 
     _safety = safety or {}
-    max_lin = float(_safety.get("max_linear_speed", 0.2))
-    max_ang = float(_safety.get("max_angular_speed", 0.6))
+    max_lin = float(_safety.get("max_linear_speed", DEFAULT_SAFETY["max_linear_speed"]))
+    max_ang = float(_safety.get("max_angular_speed", DEFAULT_SAFETY["max_angular_speed"]))
     prompt = (
         _DECOMPOSE_SYSTEM_PROMPT.format(
             MAX_STEPS=max_steps,
@@ -353,8 +378,8 @@ def clamp_call(call: dict[str, Any], safety: dict[str, float]) -> tuple[dict[str
         return call, []
     args = dict(call.get("args") or {})
     notes: list[str] = []
-    lin = float(safety.get("max_linear_speed", 0.2))
-    ang = float(safety.get("max_angular_speed", 0.6))
+    lin = float(safety.get("max_linear_speed", DEFAULT_SAFETY["max_linear_speed"]))
+    ang = float(safety.get("max_angular_speed", DEFAULT_SAFETY["max_angular_speed"]))
     for axis, limit in (("dx", lin), ("dy", lin), ("dtheta", ang)):
         v = args.get(axis)
         if isinstance(v, (int, float)) and abs(v) > limit:
@@ -375,8 +400,8 @@ def split_oversized_move(step: "PlanStep", safety: dict[str, float]) -> list["Pl
     if step.tool is None or step.tool.get("name") != "move":
         return [step]
     args = step.tool.get("args") or {}
-    lin = float(safety.get("max_linear_speed", 0.2))
-    ang = float(safety.get("max_angular_speed", 0.6))
+    lin = float(safety.get("max_linear_speed", DEFAULT_SAFETY["max_linear_speed"]))
+    ang = float(safety.get("max_angular_speed", DEFAULT_SAFETY["max_angular_speed"]))
     dx = float(args.get("dx") or 0.0)
     dy = float(args.get("dy") or 0.0)
     dtheta = float(args.get("dtheta") or 0.0)

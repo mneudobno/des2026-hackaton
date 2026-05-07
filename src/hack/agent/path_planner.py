@@ -26,8 +26,11 @@ def find_path(
     goal: tuple[float, float],
     obstacles: list[Any],
     *,
+    # Defaults mirror `robot.calibration` in `configs/agent.yaml`. Callers
+    # should always pass explicit kwargs from the live config; these fallbacks
+    # exist only so unit tests / direct invocations work without a config.
     robot_radius: float = 0.08,
-    extra_clearance: float = 0.02,
+    extra_clearance: float = 0.03,
     cell_size: float = 0.05,
     margin: float = 1.0,
 ) -> list[tuple[float, float]]:

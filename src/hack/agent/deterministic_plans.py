@@ -14,7 +14,7 @@ import math
 import re
 from typing import Any
 
-from hack.agent.plan_memory import PlanStep  # noqa: F401 — re-exported for callers
+from hack.agent.plan_memory import DEFAULT_SAFETY, PlanStep  # noqa: F401 — re-exported for callers
 
 
 _CLASSIFY_PROMPT = (
@@ -227,8 +227,8 @@ def _gen_return_to_origin(
     if dist < 0.05:
         return [PlanStep(text="Already at origin.", tool={"name": "wait", "args": {"seconds": 0.5}, "rationale": "already at origin"})]
 
-    lin = float(safety.get("max_linear_speed", 0.2))
-    ang = float(safety.get("max_angular_speed", 0.6))
+    lin = float(safety.get("max_linear_speed", DEFAULT_SAFETY["max_linear_speed"]))
+    ang = float(safety.get("max_angular_speed", DEFAULT_SAFETY["max_angular_speed"]))
 
     # Check if the caller wants turn-walk-turn (real robots) or body-frame (sim).
     # `safety` dict also carries calibration keys when passed from the runner.
@@ -329,7 +329,7 @@ def _gen_rotate_degrees(
     if any(k in c for k in ("right", "clockwise", "cw")):
         rad = -rad
 
-    ang = float(safety.get("max_angular_speed", 0.6))
+    ang = float(safety.get("max_angular_speed", DEFAULT_SAFETY["max_angular_speed"]))
     n = max(1, math.ceil(abs(rad) / ang))
     per_step = rad / n
 
@@ -350,7 +350,7 @@ def _gen_single_move(
     cue: str, pose: tuple[float, float, float], safety: dict[str, float],
 ) -> list[PlanStep]:
     c = cue.lower()
-    lin = float(safety.get("max_linear_speed", 0.2))
+    lin = float(safety.get("max_linear_speed", DEFAULT_SAFETY["max_linear_speed"]))
     dx = dy = 0.0
 
     if any(k in c for k in ("forward", "ahead")):
@@ -387,8 +387,8 @@ def _gen_numbered_walk(
         return []
     n = int(m.group(1))
     direction = m.group(2)
-    lin = float(safety.get("max_linear_speed", 0.2))
-    ang = float(safety.get("max_angular_speed", 0.6))
+    lin = float(safety.get("max_linear_speed", DEFAULT_SAFETY["max_linear_speed"]))
+    ang = float(safety.get("max_angular_speed", DEFAULT_SAFETY["max_angular_speed"]))
     steps: list[PlanStep] = []
 
     # For left/right/back: turn first, then walk forward.
@@ -430,8 +430,8 @@ def _gen_walk_circle(
     cue: str, pose: tuple[float, float, float], safety: dict[str, float],
 ) -> list[PlanStep]:
     """8-step circle: each step advances forward + turns 45° = 360° total arc."""
-    lin = float(safety.get("max_linear_speed", 0.2))
-    ang = float(safety.get("max_angular_speed", 0.6))
+    lin = float(safety.get("max_linear_speed", DEFAULT_SAFETY["max_linear_speed"]))
+    ang = float(safety.get("max_angular_speed", DEFAULT_SAFETY["max_angular_speed"]))
     n = 8
     per_theta = (2 * math.pi) / n  # 0.785 rad = 45°
     per_dx = min(lin, 0.15)  # keep radius small
@@ -478,7 +478,7 @@ def check_obstacle_avoidance(
     # Pick the nearest ahead obstacle.
     nearest = ahead_obstacles[0]
     pos = nearest.get("rough_position", "ahead")
-    lin = float(safety.get("max_linear_speed", 0.2))
+    lin = float(safety.get("max_linear_speed", DEFAULT_SAFETY["max_linear_speed"]))
     # Dodge magnitude from calibration (so different robots size correctly);
     # still capped at max_linear_speed so safety wins.
     cal = safety.get("_calibration") or {}
@@ -598,8 +598,8 @@ def _gen_navigate_to_target(
     dist = math.hypot(tx - x, ty - y)
     if dist < 0.05:
         return [PlanStep(text="Already at target.", tool={"name": "wait", "args": {"seconds": 0.5}, "rationale": "already there"})]
-    lin = float(safety.get("max_linear_speed", 0.2))
-    ang = float(safety.get("max_angular_speed", 0.6))
+    lin = float(safety.get("max_linear_speed", DEFAULT_SAFETY["max_linear_speed"]))
+    ang = float(safety.get("max_angular_speed", DEFAULT_SAFETY["max_angular_speed"]))
     prefer_fwd = bool(safety.get("prefer_forward_walk", False))
 
     # If there are obstacles in the world, plan a polyline around them via A*.

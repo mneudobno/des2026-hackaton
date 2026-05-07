@@ -107,6 +107,7 @@ Use `.claude/skills/` entries when they match — do not reinvent their steps:
 
 **Build window (mid-flight)**
 - `robot-adapter` — wire a new RobotAdapter once the SDK is known.
+- `calibrate` — guided robot calibration: walk through every `robot.safety` + `robot.calibration` knob, compute scale factors from real motions, write to `configs/agent.local.yaml`, smoke-test. Trigger: *"calibrate the robot"*, *"robot drifts"*, *"robot under/overshoots"*, *"/calibrate"*. Run after `robot-adapter` is wired.
 - `swap-llm` — swap LLM/VLM provider/model/base_url in `configs/agent.yaml` + smoke test. Trigger: *"swap LLM"*, *"flip to ZGX-B"*, *"fall back to laptop VLM"*.
 - `agent-prompt` — prompt iteration via JSONL replay.
 - `watch-rehearsal` — auto-monitors rehearsal logs (already on; mandatory).
