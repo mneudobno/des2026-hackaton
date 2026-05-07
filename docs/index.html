@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Just Build · DIS2026X1 hackathon</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #0A1628;
+    --bg-soft: #102134;
+    --green: #76B900;
+    --orange: #FF8C00;
+    --text: #1A2332;
+    --text-soft: #4A5568;
+    --muted: #6B7C93;
+    --line: #E2E8F0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg);
+    color: white;
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  body {
+    background:
+      radial-gradient(ellipse at top right, rgba(118,185,0,0.12) 0%, transparent 50%),
+      radial-gradient(ellipse at bottom left, rgba(255,140,0,0.08) 0%, transparent 50%),
+      var(--bg);
+    padding: 60px 24px;
+  }
+
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  .brand {
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  .brand .dot { color: var(--orange); }
+
+  h1 {
+    font-size: 44px;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -1px;
+    margin-bottom: 16px;
+  }
+  h1 .accent { color: var(--green); }
+
+  .lede {
+    color: rgba(255,255,255,0.78);
+    font-size: 18px;
+    line-height: 1.5;
+    margin-bottom: 36px;
+    max-width: 560px;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    padding: 14px 0 28px;
+    border-top: 1px solid rgba(118,185,0,0.25);
+    border-bottom: 1px solid rgba(118,185,0,0.25);
+    margin-bottom: 36px;
+    font-size: 13px;
+  }
+  .meta div { display: flex; flex-direction: column; gap: 4px; }
+  .meta .label {
+    color: var(--green);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+  .meta .val { color: rgba(255,255,255,0.9); }
+
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--green);
+    margin-bottom: 14px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 32px;
+  }
+
+  .card {
+    display: block;
+    padding: 20px 22px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    text-decoration: none;
+    color: white;
+    transition: all 0.15s ease;
+    min-height: 116px;
+  }
+
+  .card:hover {
+    background: rgba(118,185,0,0.08);
+    border-color: rgba(118,185,0,0.4);
+    transform: translateY(-2px);
+  }
+
+  .card.primary {
+    background: linear-gradient(135deg, rgba(118,185,0,0.15) 0%, rgba(255,140,0,0.08) 100%);
+    border-color: rgba(118,185,0,0.4);
+    grid-column: 1 / -1;
+  }
+
+  .card.primary:hover {
+    background: linear-gradient(135deg, rgba(118,185,0,0.22) 0%, rgba(255,140,0,0.12) 100%);
+  }
+
+  .card .ico { font-size: 24px; margin-bottom: 8px; line-height: 1; }
+  .card .title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .card.primary .title { font-size: 19px; }
+  .card .sub {
+    font-size: 12.5px;
+    color: rgba(255,255,255,0.6);
+    line-height: 1.5;
+  }
+
+  .footer {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.4px;
+  }
+  .footer a {
+    color: var(--green);
+    text-decoration: none;
+  }
+  .footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 600px) {
+    body { padding: 40px 16px; }
+    h1 { font-size: 32px; }
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand">Just Build <span class="dot">·</span> DIS2026X1</div>
+
+  <h1>Tomorrow we hack a <span class="accent">robot</span>.</h1>
+
+  <p class="lede">An AI agent that sees, hears, and moves. Two hours. Three people. Built on HP ZGX Nano AI Stations.</p>
+
+  <div class="meta">
+    <div>
+      <span class="label">When</span>
+      <span class="val">Friday 8 May 2026, 10:30</span>
+    </div>
+    <div>
+      <span class="label">Where</span>
+      <span class="val">Kistamässan, Stockholm — main stage P1</span>
+    </div>
+    <div>
+      <span class="label">Team</span>
+      <span class="val">Kamila · Simon · Timur</span>
+    </div>
+    <div>
+      <span class="label">Sponsors</span>
+      <span class="val">HP × NVIDIA</span>
+    </div>
+  </div>
+
+  <div class="section-title">Read tonight</div>
+  <div class="grid">
+    <a class="card primary" href="team_briefing.html">
+      <div class="ico">🎯</div>
+      <div class="title">Team briefing — slides for tonight</div>
+      <div class="sub">13 slides covering the event, the robot, vocabulary, your roles, the clock, the cut-list, and tonight's homework. Arrow keys to navigate.</div>
+    </a>
+
+    <a class="card" href="REF.md">
+      <div class="ico">📋</div>
+      <div class="title">REF.md — day-of cheat sheet</div>
+      <div class="sub">Trigger phrases, command reference, physical setup steps, troubleshooting.</div>
+    </a>
+
+    <a class="card" href="TECH_STACK.md">
+      <div class="ico">🔧</div>
+      <div class="title">TECH_STACK.md — deep stack reference</div>
+      <div class="sub">Every tool and model the organizer pre-installed, with verification commands.</div>
+    </a>
+
+    <a class="card" href="DAY_OF_BRIEF.md">
+      <div class="ico">📝</div>
+      <div class="title">DAY_OF_BRIEF.md — typing target</div>
+      <div class="sub">Where the typist captures organizer notes during the 10:30 briefing. Has a checklist at the top.</div>
+    </a>
+
+    <a class="card" href="day_of_playbook.md">
+      <div class="ico">📅</div>
+      <div class="title">day_of_playbook.md — strategy</div>
+      <div class="sub">Schedule, roles, minute-by-minute tactics for the 2-hour build window.</div>
+    </a>
+  </div>
+
+  <div class="footer">
+    Source: <a href="https://github.com/mneudobno/des2026-hackaton">github.com/mneudobno/des2026-hackaton</a> · Open the slides on a desktop for best layout · Markdown files render as raw text on GitHub Pages with Jekyll disabled — view them on GitHub for proper formatting
+  </div>
+
+</div>
+</body>
+</html>
