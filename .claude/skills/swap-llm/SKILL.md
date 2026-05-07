@@ -1,16 +1,69 @@
 ---
 name: swap-llm
-description: Swap the LLM or VLM provider/model/base_url in configs/agent.yaml and smoke-test it. Trigger on "swap LLM", "swap VLM", "switch model", "use Nemotron / Qwen / Ollama", "flip to ZGX-B", "fall back to laptop VLM", "the ZGX endpoint changed". Use whenever the team needs to pivot the inference stack mid-build without touching runtime code.
+description: Swap or first-time-adopt the LLM/VLM provider/model/base_url in configs/agent.yaml and smoke-test it. Trigger on "swap LLM", "swap VLM", "switch model", "use Nemotron / Qwen / Ollama", "flip to ZGX-B", "fall back to laptop VLM", "the ZGX endpoint changed", "lock in the config", "adopt the real setup", "first-time adoption". Use for first-time config adoption (placeholders → real ZGX IPs and model tags) AND for mid-build pivots.
 ---
 
-# swap-llm — pivot inference without touching runtime
+# swap-llm — adopt or pivot inference without touching runtime
 
 The runtime never references providers directly — `make_llm(cfg['llm'])` and
 `make_vlm(cfg['vlm'])` resolve from `configs/agent.yaml`. Your job is to:
-1. Identify what the user wants to swap (LLM, VLM, or both; provider, model, or base_url).
-2. Edit only `configs/agent.yaml` (or a copy: `configs/agent.local.yaml`, gitignored).
-3. Smoke-test with one tiny request.
-4. Tell the user what you changed and what to do if it doesn't work.
+
+1. Decide which mode you're in (see below).
+2. Identify what to write (LLM, VLM, or both; provider, model, base_url, extra_body).
+3. Edit only `configs/agent.yaml` (or a copy: `configs/agent.local.yaml`, gitignored).
+4. Smoke-test with one tiny request and a rehearsal.
+5. Tell the user what you changed and what to do if it doesn't work.
+
+## Two modes
+
+### Mode A — First-time adoption ("lock in the config")
+
+Triggered by *"lock in the config"*, *"adopt the real setup"*, *"first-time
+adoption"*, or any phrasing that means "we just got the real IPs and model
+tags, write them into the YAML now". This is the one moment placeholders
+in `configs/agent.yaml` (`<zgx-a>`, `<vllm-tag-from-/v1/models>`, etc.)
+become live values.
+
+Procedure:
+1. **Read what we know already.** In order:
+   - `runs/recon-latest.json` — for `<zgx-a>` / `<zgx-b>` IPs (machine-authoritative).
+   - The latest `day-of-brief` skill output (if visible in the conversation) — for the chosen adapter, safety limits, and any audio/video constraints.
+   - `docs/DAY_OF_BRIEF.md` — fallback if the brief skill output is gone.
+   - `configs/agent.yaml` — current state; you'll write to it, not start fresh.
+2. **Probe vLLM live** to learn the actual model id:
+   ```
+   curl -s http://<zgx-a>:8000/v1/models | jq -r '.data[].id'
+   ```
+   Use the FIRST id returned (or the multimodal one if both Nemotron and
+   Qwen show up — Nemotron's id is preferred because it's the default
+   profile).
+3. **Pick the profile** from §"Common pivots" below based on what
+   `/v1/models` shows. Profile A (Nemotron Omni multimodal) is the default
+   if Omni is served; profile C (Qwen LLM-only) if only Qwen; profile D
+   (laptop Ollama) if neither answers.
+4. **Write `configs/agent.yaml`** end-to-end with:
+   - `llm.base_url` and `llm.base_urls` ← real ZGX-A, real ZGX-B
+   - `llm.model` ← exact id from `/v1/models`
+   - `vlm.base_url` and `vlm.model` ← same endpoint if multimodal, otherwise laptop fallback
+   - `robot.adapter` ← from the brief skill output
+   - `robot.safety.max_*` ← from the brief if specified
+   - For Nemotron LLM, ADD `extra_body: {chat_template_kwargs: {enable_thinking: false}}` to skip CoT on the planner (vision keeps reasoning).
+5. **Smoke test** in this exact order:
+   ```
+   uv run hack doctor                                          # vllm :8000/v1 row green
+   uv run hack rehearse --scenario obstacle-corridor          # ~6s; expect grade A
+   ```
+6. **Report**: what you wrote (4-line diff summary), the rehearsal result,
+   and the next thing to do (start `hack tui` and call "where am I").
+
+### Mode B — Mid-build pivot
+
+Triggered by *"swap LLM"*, *"swap VLM"*, *"flip to ZGX-B"*, *"fall back to
+laptop VLM"*, etc. The config already has live values — we're swapping one
+or two specific fields without rewriting everything.
+
+Procedure: identify what changed (provider? model? base_url? extra_body?),
+update only those fields, smoke-test, report.
 
 ## Common pivots and their config blocks
 

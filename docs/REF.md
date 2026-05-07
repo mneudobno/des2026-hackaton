@@ -49,6 +49,7 @@ You don't type `hack` commands. You tell Claude the situation and it runs the ri
 | T+0:00 | "boot the ZGX stack" | Runs `bootstrap_zgx.sh`, confirms vLLM is up |
 | T+0:05 | "is the stack alive?" | `hack serve status --host <zgx>` |
 | T+0:10 | "warm it up" | `hack serve warmup --host <zgx>` |
+| **T+0:10** | **"lock in the config"** or **"adopt the real setup"** | **Reads recon + `/v1/models` + brief decisions, writes the actual IPs/tags/adapter into `configs/agent.yaml`, runs `hack rehearse --scenario obstacle-corridor`, reports grade. This is the one moment placeholders become real values.** |
 | T+0:15 | "probe the robot" + adapter name | `hack robot probe --adapter <name>` — **must be green** before anything else |
 | T+0:30 | "calibrate the robot" | `hack calibrate --adapter <name>`, commits `linear_scale` / `angular_scale`. **Don't skip.** |
 | T+0:30 | (you launch this yourself) | Open `uv run hack tui` in a fresh terminal pane. Leave it running. |
