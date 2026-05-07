@@ -1,3 +1,6 @@
+---
+---
+
 # Day-of decisions matrix
 
 After `docs/DAY_OF_BRIEF.md` is filled (and you've said *"process the brief"*), walk this top to bottom. Each section: brief answer → what we change in the repo. **No "it depends" entries** — if an answer doesn't match a row, use the default and note it in the brief's "Open questions" field.

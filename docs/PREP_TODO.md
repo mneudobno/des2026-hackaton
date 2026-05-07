@@ -1,3 +1,6 @@
+---
+---
+
 # Preparation TODO — "Just Build" for DIS2026X1 (2026-05-08)
 
 Single source of truth for hackathon prep. Keep this updated as we go — tick items with `[x]`, add notes inline. **Last updated: 2026-04-18.**

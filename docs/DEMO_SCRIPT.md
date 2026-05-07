@@ -1,3 +1,6 @@
+---
+---
+
 # Demo script — judged run (DIS2026X1, 2026-05-08)
 
 Target duration: **60 seconds spoken + ~30 seconds live demo**. Everything

@@ -1,3 +1,6 @@
+---
+---
+
 # REF — your only doc tomorrow
 
 > Print page 1. Pin it next to the laptop. Everything else is in Claude Code, the TUI, or `docs/DAY_OF_BRIEF.md`.

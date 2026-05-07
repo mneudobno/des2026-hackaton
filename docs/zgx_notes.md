@@ -1,3 +1,6 @@
+---
+---
+
 # ZGX Nano operating notes
 
 Hardware: NVIDIA GB10 Grace Blackwell, 128 GB unified RAM, 1000 TOPS FP4, DGX OS, 200 Gbps networking. Two boxes per team, paired to your laptop.

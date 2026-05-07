@@ -1,3 +1,6 @@
+---
+---
+
 # Day-of brief
 
 > **Type/paste freely below.** No structure. Whatever organizers say or send.

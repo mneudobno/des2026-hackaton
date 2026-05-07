@@ -1,0 +1,24 @@
+title: Just Build · DIS2026X1
+description: Tomorrow we hack a robot — team brief for the HP & NVIDIA ZGX Nano Hackathon, Stockholm 2026-05-08.
+url: "https://mneudobno.github.io"
+baseurl: "/des2026-hackaton"
+
+# We supply our own layout (_layouts/default.html); no theme override.
+# Markdown via kramdown + Rouge syntax highlighting (GitHub Pages defaults).
+markdown: kramdown
+highlighter: rouge
+
+# Apply default layout to every page that has frontmatter.
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
+# team_briefing.html has no YAML frontmatter, so Jekyll treats it as a
+# static file and passes it through unchanged — Reveal.js keeps working.
+# Files in _archive/ are historical and shouldn't render as Jekyll pages.
+exclude:
+  - _archive
+  - "*.bak"
+  - README.md

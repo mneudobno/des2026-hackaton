@@ -1,3 +1,6 @@
+---
+---
+
 # Rehearsal log
 
 Append-only record of smoke tests. Every `uv run hack rehearse` run gets **one line** here. The value is in the **Insight** and **Action** columns — treat them as the reason we're running rehearsals.

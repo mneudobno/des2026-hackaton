@@ -1,3 +1,6 @@
+---
+---
+
 # Day-of live task board — team "Just Build", 2026-05-08
 
 **Ticking this file is the source of truth during the build window.** The playbook (`day_of_playbook.md`) is strategy; this is tactics. Update on every commit. If a task isn't ticking in the time column it belongs to, invoke the cut-list.

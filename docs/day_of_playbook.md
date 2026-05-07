@@ -1,3 +1,6 @@
+---
+---
+
 # Day-of playbook — team "Just Build" @ DIS2026X1, 2026-05-08
 
 > **This file is strategy** (roles, timing, cut-list). The **tactical** day-of files are:

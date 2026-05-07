@@ -1,3 +1,6 @@
+---
+---
+
 # Architecture — where each component runs, how they talk
 
 This doc answers: *"If I open this repo for the first time, what runs on which
