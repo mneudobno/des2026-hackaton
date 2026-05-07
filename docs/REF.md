@@ -116,7 +116,7 @@ You don't type `hack` commands. You tell Claude the situation and it runs the ri
 | When | Say this | Claude runs / does |
 |---|---|---|
 | 09:30 | "doctor" or "are we good" | `uv run hack doctor` → reports green/red |
-| 10:25 | "recon both ZGX" + the two IPs | `hack recon user@<a>` + `-b`, then summarises and proposes config edit |
+| 10:25 | "recon both ZGX" *(IPs are read from `DAY_OF_BRIEF.md` — paste them there as you hear them; only include in chat if not yet in the brief)* | `uv run hack recon user@<zgx-a-ip>` then `…@<zgx-b-ip>`, summarises, proposes config edit |
 | T+0:00 | "process the brief" | Reads `DAY_OF_BRIEF.md`, produces config edits + first 3 tasks per role |
 | T+0:00 | "boot the ZGX stack" | Runs `bootstrap_zgx.sh`, confirms vLLM is up |
 | T+0:05 | "is the stack alive?" | `hack serve status --host <zgx>` |

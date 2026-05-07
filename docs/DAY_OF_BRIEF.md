@@ -23,7 +23,9 @@
 - [ ] Robot's network address (or "USB", or "we hand you a token")
 
 **Hardware + network**
-- [ ] ZGX-A and ZGX-B IPs (or printed somewhere)
+- [ ] ZGX-A IP: `___.___.___.___`  ← paste as you hear it; Claude reads from this line
+- [ ] ZGX-B IP: `___.___.___.___`
+- [ ] SSH user (default `user`): `___`
 - [ ] vLLM endpoint port (default `:8000`; confirm if different)
 - [ ] Internet access during the **build** — yes / no
 - [ ] Internet access during the **judged run** — yes / no

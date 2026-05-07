@@ -12,16 +12,27 @@ it into something the team can act on in 60 seconds.
 
 ## Procedure
 
-1. **Get the data.** If the user hasn't run recon yet, do it now (host
-   from the user, fall back to asking):
-   ```
-   uv run hack recon user@<zgx-a-ip>
-   uv run hack recon user@<zgx-b-ip>
-   ```
-   Otherwise read `runs/recon-latest.json` directly. If multiple hosts have
-   been reconned, list both summaries side-by-side.
+1. **Get the IPs.** Try in order:
+   a. **`docs/DAY_OF_BRIEF.md` — Hardware + network checklist.** The team
+      types ZGX-A / ZGX-B IPs there as they hear them at 10:30. Look for
+      lines `- [ ] ZGX-A IP:` and `- [ ] ZGX-B IP:`. If both are filled in
+      (not still `___.___.___.___`), use those — they're the canonical
+      source.
+   b. **The user's chat message.** If the brief slots are empty but the
+      user pasted IPs in chat, use those.
+   c. **Ask the user.** Last resort.
+   Also read the SSH user from the brief (`SSH user: ___`); default to
+   `user` if blank.
 
-2. **Extract these fields** (in this order; missing field = mark `?`):
+2. **Run recon for each box** (skip if `runs/recon-latest.json` was written
+   in this session and the IPs match):
+   ```
+   uv run hack recon <ssh-user>@<zgx-a-ip>
+   uv run hack recon <ssh-user>@<zgx-b-ip>
+   ```
+   If multiple hosts have been reconned, list both summaries side-by-side.
+
+3. **Extract these fields** (in this order; missing field = mark `?`):
    - GPU model + memory (e.g. "GB10 128 GB unified")
    - vLLM status: is `:8000/v1/models` responding? If yes, list the served
      model `id`s.
@@ -30,7 +41,7 @@ it into something the team can act on in 60 seconds.
    - Disk free on `/` (warn if <20 GB).
    - Hostname / IP echo so the team knows which is which.
 
-3. **Decide what to swap in `configs/agent.yaml`.** Use the
+4. **Decide what to swap in `configs/agent.yaml`.** Use the
    `swap-llm` skill's profile table:
    - vLLM up + Omni served → profile A (multimodal, single endpoint).
    - vLLM up + only Qwen served → profile C (LLM via vLLM, VLM on laptop).
